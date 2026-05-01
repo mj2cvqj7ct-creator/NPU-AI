@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 REM ============================================================
 REM NPU Audio Enhancer - Windows ARM64 Build Script
 REM Requires: Python 3.11+, pip

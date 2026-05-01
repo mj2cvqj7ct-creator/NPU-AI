@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 REM ============================================================
 REM NPU Audio Enhancer - Quick Run Script
 REM Run directly without building EXE
