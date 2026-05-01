@@ -38,17 +38,20 @@ def print_step(step: int, total: int, msg: str) -> None:
 
 
 def find_python() -> str:
-    """Find Python executable."""
-    for candidate in ["python", "python3", "py -3"]:
+    """Find a system Python executable."""
+    candidates = [("python",), ("python3",), ("py", "-3")]
+    for cmd in candidates:
         try:
             result = subprocess.run(
-                candidate.split(),
+                list(cmd) + ["--version"],
                 capture_output=True,
                 text=True,
                 timeout=10,
             )
             if result.returncode == 0:
-                return candidate.split()[0]
+                found = shutil.which(cmd[0])
+                if found:
+                    return found
         except (FileNotFoundError, subprocess.TimeoutExpired):
             continue
     return "python"
@@ -115,7 +118,12 @@ def main() -> int:
     print_step(1, total_steps, "Setting up virtual environment...")
     venv_dir = os.path.join(project_dir, "venv")
     if not os.path.isdir(venv_dir):
-        rc = run_cmd([sys.executable, "-m", "venv", "venv"])
+        if getattr(sys, "frozen", False):
+            python_cmd = find_python()
+            print(f"[INFO] Frozen mode: using system Python: {python_cmd}")
+        else:
+            python_cmd = sys.executable
+        rc = run_cmd([python_cmd, "-m", "venv", "venv"])
         if rc != 0:
             print("[ERROR] Failed to create virtual environment")
             input("Press Enter to exit...")
@@ -216,10 +224,11 @@ def main() -> int:
             print(f"[WARNING] Desktop path not found: {DESKTOP_PATH}")
             alt_desktop = os.path.join(os.path.expanduser("~"), "Desktop")
             if os.path.isdir(alt_desktop):
-                alt_dest = os.path.join(alt_desktop, INSTALLER_FILENAME)
-                shutil.copy2(installer_path, alt_dest)
-                print(f"[OK] Installer copied to: {alt_dest}")
+                desktop_dest = os.path.join(alt_desktop, INSTALLER_FILENAME)
+                shutil.copy2(installer_path, desktop_dest)
+                print(f"[OK] Installer copied to: {desktop_dest}")
             else:
+                desktop_dest = ""
                 print(f"[INFO] Installer available at: {installer_path}")
     except Exception as e:
         print(f"[WARNING] Could not copy to desktop: {e}")
@@ -229,7 +238,7 @@ def main() -> int:
     print_header("Build Complete!")
     print("  Application EXE: dist\\NPU_Audio_Enhancer\\NPU_Audio_Enhancer.exe")
     print(f"  Installer:       {installer_path}")
-    if os.path.isfile(desktop_dest):
+    if desktop_dest and os.path.isfile(desktop_dest):
         print(f"  Desktop copy:    {desktop_dest}")
     print()
     print("  Double-click the installer to install on your PC.")
