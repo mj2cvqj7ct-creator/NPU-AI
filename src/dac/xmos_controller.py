@@ -3,6 +3,7 @@ SABAJ A20D XMOS USB DAC Driver Control.
 
 Interfaces with the XMOS USB DAC driver to configure sample rate,
 bit depth, buffer size, and exclusive mode for optimal audio output.
+NPU-optimized latency/buffer calculation for zero-dropout streaming.
 """
 
 from __future__ import annotations
@@ -78,6 +79,7 @@ class XMOSController:
 
     Manages DAC configuration, sample rate switching, buffer optimization,
     and WASAPI exclusive mode for bit-perfect audio output.
+    NPU-aware buffer management prevents dropouts during AI processing.
     """
 
     def __init__(self, config: DACConfig | None = None):
@@ -87,6 +89,7 @@ class XMOSController:
         self._device_handle: Any = None
         self._current_sample_rate: int = 0
         self._current_bit_depth: int = 0
+        self._npu_processing_ms: float = 0.0
 
         self._detect_device()
 
@@ -99,7 +102,6 @@ class XMOSController:
             self._status = DACStatus.DISCONNECTED
 
     def _detect_via_sounddevice(self) -> None:
-        """Detect DAC using sounddevice."""
         try:
             import sounddevice as sd
 
@@ -138,7 +140,6 @@ class XMOSController:
     def configure(self, config: DACConfig) -> bool:
         """Apply DAC configuration."""
         self.config = config
-
         logger.info(
             "DAC configured: %dHz / %dbit / buffer=%dms / exclusive=%s / latency=%dms",
             config.sample_rate.value,
@@ -147,73 +148,77 @@ class XMOSController:
             config.exclusive_mode,
             config.latency_ms,
         )
-
         self._current_sample_rate = config.sample_rate.value
         self._current_bit_depth = config.bit_depth.value
-
         return True
 
     def set_sample_rate(self, rate: SampleRate) -> bool:
-        """Change the DAC sample rate."""
         self.config.sample_rate = rate
         self._current_sample_rate = rate.value
         logger.info("Sample rate set to %d Hz", rate.value)
         return True
 
     def set_bit_depth(self, depth: BitDepth) -> bool:
-        """Change the DAC bit depth."""
         self.config.bit_depth = depth
         self._current_bit_depth = depth.value
         logger.info("Bit depth set to %d", depth.value)
         return True
 
     def set_buffer_size(self, size_ms: int) -> bool:
-        """Set the output buffer size in milliseconds."""
         size_ms = max(1, min(100, size_ms))
         self.config.buffer_size_ms = size_ms
         logger.info("Buffer size set to %d ms", size_ms)
         return True
 
     def set_latency(self, latency_ms: int) -> bool:
-        """Set the target latency in milliseconds."""
         latency_ms = max(1, min(50, latency_ms))
         self.config.latency_ms = latency_ms
         logger.info("Target latency set to %d ms", latency_ms)
         return True
 
-    def optimize_for_npu(self) -> dict:
+    def report_npu_processing_time(self, ms: float) -> None:
+        """Report NPU processing time for adaptive buffer optimization."""
+        alpha = 0.1
+        self._npu_processing_ms = (
+            self._npu_processing_ms * (1 - alpha) + ms * alpha
+        )
+
+    def optimize_for_npu(self) -> dict[str, Any]:
         """Auto-optimize DAC settings for NPU processing pipeline.
 
-        Calculates optimal buffer and latency values to prevent audio dropouts
-        while minimizing latency for real-time NPU processing.
+        Uses reported NPU processing time to dynamically calculate
+        buffer/latency that prevents audio dropouts while minimizing delay.
         """
-        npu_processing_budget_ms = 5
-        safety_margin_ms = 2
+        npu_budget = max(5.0, self._npu_processing_ms * 1.5)
+        safety_margin = 2.0
 
-        optimal_buffer = npu_processing_budget_ms + safety_margin_ms
+        optimal_buffer = int(npu_budget + safety_margin)
         optimal_latency = max(3, optimal_buffer - 2)
 
         self.config.buffer_size_ms = optimal_buffer
         self.config.latency_ms = optimal_latency
         self.config.exclusive_mode = True
 
-        optimal_asio = max(64, int(self.config.sample_rate.value * optimal_buffer / 1000))
-        optimal_asio = 2 ** int(np.log2(optimal_asio) + 0.5) if optimal_asio > 0 else 256
+        optimal_asio = max(
+            64,
+            int(self.config.sample_rate.value * optimal_buffer / 1000),
+        )
+        optimal_asio = int(2 ** round(np.log2(optimal_asio))) if optimal_asio > 0 else 256
         self.config.asio_buffer_size = optimal_asio
 
-        settings = {
+        settings: dict[str, Any] = {
             "buffer_size_ms": optimal_buffer,
             "latency_ms": optimal_latency,
             "asio_buffer_size": optimal_asio,
             "exclusive_mode": True,
-            "npu_budget_ms": npu_processing_budget_ms,
+            "npu_budget_ms": round(npu_budget, 1),
+            "measured_npu_ms": round(self._npu_processing_ms, 2),
         }
 
         logger.info("DAC optimized for NPU: %s", settings)
         return settings
 
-    def get_status_info(self) -> dict:
-        """Get comprehensive DAC status information."""
+    def get_status_info(self) -> dict[str, Any]:
         return {
             "status": self._status.value,
             "device_name": self._info.name,
@@ -226,5 +231,5 @@ class XMOSController:
             "exclusive_mode": self.config.exclusive_mode,
             "usb_speed": self._info.usb_speed,
             "supports_dsd": self._info.supports_dsd,
+            "npu_processing_ms": round(self._npu_processing_ms, 2),
         }
-
