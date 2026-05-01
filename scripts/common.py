@@ -11,6 +11,9 @@ APP_NAME = "NPU Audio Enhancer"
 APP_VERSION = "1.0.0"
 INSTALLER_FILENAME = f"NPU_Audio_Enhancer_Setup_{APP_VERSION}.exe"
 
+# Default output directory for built EXEs on target machine
+OUTPUT_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "NPU-AI-main")
+
 _PROJECT_SENTINELS = ("requirements.txt", "build.spec", "pyproject.toml")
 
 

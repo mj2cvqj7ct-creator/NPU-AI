@@ -100,26 +100,29 @@ def main() -> int:
         pause_exit(1)
     print(f"[OK] Installer built: {installer_path}")
 
-    # --- Step 5: Copy to Desktop ---
+    # --- Step 5: Copy to Desktop\NPU-AI-main ---
     desktop_path = get_desktop_path()
-    print_step(5, total_steps, f"Copying installer to {desktop_path}...")
+    output_dir = os.path.join(desktop_path, "NPU-AI-main")
+    os.makedirs(output_dir, exist_ok=True)
+    print_step(5, total_steps, f"Copying installer to {output_dir}...")
 
-    desktop_dest = os.path.join(desktop_path, INSTALLER_FILENAME)
+    desktop_dest = os.path.join(output_dir, INSTALLER_FILENAME)
     try:
-        if os.path.isdir(desktop_path):
+        if os.path.isdir(output_dir):
             shutil.copy2(installer_path, desktop_dest)
             print(f"[OK] Installer copied to: {desktop_dest}")
         else:
             desktop_dest = ""
-            print(f"[WARNING] Desktop path not found: {desktop_path}")
+            print(f"[WARNING] Output path not found: {output_dir}")
             print(f"[INFO] Installer available at: {installer_path}")
     except Exception as e:
         desktop_dest = ""
-        print(f"[WARNING] Could not copy to desktop: {e}")
+        print(f"[WARNING] Could not copy: {e}")
         print(f"[INFO] Installer available at: {installer_path}")
 
     # --- Done ---
     print_header("Build Complete!")
+    print(f"  Output directory: {output_dir}")
     print("  Application EXE: dist\\NPU_Audio_Enhancer\\NPU_Audio_Enhancer.exe")
     print(f"  Installer:       {installer_path}")
     if desktop_dest and os.path.isfile(desktop_dest):

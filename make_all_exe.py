@@ -113,20 +113,22 @@ def main() -> int:
             print(f"  [ERROR] Failed to build {name}.exe")
             failed.append(name)
 
-    # Copy to Desktop
+    # Copy to Desktop\NPU-AI-main
     desktop = get_desktop_path()
-    print(f"\n[Copy] Copying EXEs to {desktop}...")
+    output_dir = os.path.join(desktop, "NPU-AI-main")
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"\n[Copy] Copying EXEs to {output_dir}...")
 
-    if os.path.isdir(desktop):
+    if os.path.isdir(output_dir):
         for exe_path in built_exes:
-            dest = os.path.join(desktop, os.path.basename(exe_path))
+            dest = os.path.join(output_dir, os.path.basename(exe_path))
             try:
                 shutil.copy2(exe_path, dest)
-                print(f"  [OK] {os.path.basename(exe_path)} -> Desktop")
+                print(f"  [OK] {os.path.basename(exe_path)} -> {output_dir}")
             except Exception as e:
                 print(f"  [WARNING] Could not copy {os.path.basename(exe_path)}: {e}")
     else:
-        print(f"  [WARNING] Desktop path not found: {desktop}")
+        print(f"  [WARNING] Output path not found: {output_dir}")
 
     # Summary
     print()
@@ -138,7 +140,9 @@ def main() -> int:
     if failed:
         print(f"  Failed: {', '.join(failed)}")
     print()
-    print("  EXEs on Desktop:")
+    print(f"  Output: {output_dir}")
+    print()
+    print("  EXEs:")
     for exe_path in built_exes:
         name = os.path.basename(exe_path).replace(".exe", "")
         desc = next((d for _, n, d in EXE_TARGETS if n == name), "")

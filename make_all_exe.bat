@@ -13,7 +13,7 @@ echo    NPU_Build_Installer.exe - Build EXE + installer
 echo    NPU_Installer_Only.exe - Build installer only
 echo    NPU_Launcher.exe       - Unified launcher menu
 echo.
-echo  All EXEs will be copied to your Desktop.
+echo  All EXEs will be copied to Desktop\NPU-AI-main
 echo ============================================================
 echo.
 

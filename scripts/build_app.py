@@ -8,6 +8,7 @@ import sys
 from scripts.common import (
     APP_NAME,
     ensure_venv,
+    get_desktop_path,
     get_project_dir,
     pause_exit,
     print_header,
@@ -79,9 +80,23 @@ def main() -> int:
         print(f"[ERROR] EXE not found at: {exe_path}")
         pause_exit(1)
 
+    # Copy to Desktop\NPU-AI-main
+    import shutil
+
+    desktop = get_desktop_path()
+    output_dir = os.path.join(desktop, "NPU-AI-main")
+    os.makedirs(output_dir, exist_ok=True)
+    try:
+        dest_exe = os.path.join(output_dir, "NPU_Audio_Enhancer.exe")
+        shutil.copy2(exe_path, dest_exe)
+        print(f"[OK] EXE copied to: {dest_exe}")
+    except Exception as e:
+        print(f"[WARNING] Could not copy to desktop: {e}")
+        print(f"[INFO] EXE available at: {exe_path}")
+
     print_header("Build Complete!")
-    print(f"  Output: {exe_path}")
-    print("  Run:    dist\\NPU_Audio_Enhancer\\NPU_Audio_Enhancer.exe")
+    print(f"  Output: {output_dir}")
+    print(f"  EXE:   {exe_path}")
     pause_exit(0)
     return 0
 
