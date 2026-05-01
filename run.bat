@@ -1,21 +1,18 @@
 @echo off
-REM ============================================================
-REM NPU Audio Enhancer - Quick Run Script
-REM Run directly without building EXE
-REM ============================================================
+cd /d "%~dp0"
 
 echo Starting NPU Audio Enhancer...
 
-REM Activate venv if exists
-if exist "venv\Scripts\activate.bat" (
-    call venv\Scripts\activate.bat
+REM Check Python
+python --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] Python 3.11+ not found.
+    echo         Download from: https://www.python.org/downloads/
+    pause
+    exit /b 1
 )
 
-REM Create required directories
-if not exist "models" mkdir models
-if not exist "data\recommender" mkdir data\recommender
-
-REM Run the application
-python -m src.main
+REM Run via unified build script (setup + run, no EXE build)
+python build.py --run
 
 pause
