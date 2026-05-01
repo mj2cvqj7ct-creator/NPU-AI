@@ -209,13 +209,15 @@ class SpatialProcessor:
         self._allpass_coeffs = []
         self._allpass_buffers_l = []
         self._allpass_buffers_r = []
-        self._allpass_indices = []
+        self._allpass_indices_l: list[int] = []
+        self._allpass_indices_r: list[int] = []
         for delay_ms, coeff in zip(delay_ms_list, coeffs):
             delay = max(1, int(delay_ms * self.sample_rate / 1000))
             self._allpass_coeffs.append((coeff, delay))
             self._allpass_buffers_l.append(np.zeros(delay, dtype=np.float64))
             self._allpass_buffers_r.append(np.zeros(delay, dtype=np.float64))
-            self._allpass_indices.append(0)
+            self._allpass_indices_l.append(0)
+            self._allpass_indices_r.append(0)
 
     # ------------------------------------------------------------------
     # Processing
@@ -380,19 +382,20 @@ class SpatialProcessor:
     def _apply_allpass(self, data: np.ndarray, is_left: bool) -> np.ndarray:
         """Schroeder allpass diffuser chain for spatial thickening."""
         buffers = self._allpass_buffers_l if is_left else self._allpass_buffers_r
+        indices = self._allpass_indices_l if is_left else self._allpass_indices_r
         intensity = self.holographic_intensity * 0.15
 
         out = data.copy()
         for i, (coeff, delay) in enumerate(self._allpass_coeffs):
             buf = buffers[i]
-            idx = self._allpass_indices[i]
+            idx = indices[i]
             result = np.zeros_like(out)
             for s in range(len(out)):
                 buf_val = buf[idx % delay]
                 result[s] = -coeff * out[s] + buf_val
                 buf[idx % delay] = out[s] + coeff * buf_val
                 idx += 1
-            self._allpass_indices[i] = idx
+            indices[i] = idx
             out = out * (1.0 - intensity) + result * intensity
 
         return out

@@ -101,7 +101,8 @@ class SourceSeparator:
         fft_size = self.config.fft_size
         denom = np.zeros(fft_size, dtype=np.float32)
         for i in range(0, fft_size, hop):
-            denom[i: i + fft_size] += w ** 2
+            end = min(i + fft_size, fft_size)
+            denom[i:end] += w[:end - i] ** 2
         denom = np.maximum(denom, 1e-8)
         return w / denom[:fft_size]
 
