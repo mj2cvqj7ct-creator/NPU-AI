@@ -24,7 +24,7 @@ if %errorlevel% neq 0 (
 if not exist "venv" (
     echo [Step 1] Creating virtual environment...
     python -m venv venv
-    if %errorlevel% neq 0 (
+    if !errorlevel! neq 0 (
         echo [ERROR] Failed to create virtual environment
         pause
         exit /b 1
