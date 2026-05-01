@@ -23,7 +23,25 @@ import sys
 APP_NAME = "NPU Audio Enhancer"
 APP_VERSION = "1.0.0"
 INSTALLER_FILENAME = f"NPU_Audio_Enhancer_Setup_{APP_VERSION}.exe"
-DESKTOP_PATH = os.path.join(os.path.expanduser("~"), "Desktop")
+
+
+def _get_desktop_path() -> str:
+    """Get the user's Desktop path, using Windows shell API if available."""
+    if sys.platform == "win32":
+        try:
+            import ctypes.wintypes
+
+            CSIDL_DESKTOPDIRECTORY = 0x0010
+            buf = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
+            ctypes.windll.shell32.SHGetFolderPathW(None, CSIDL_DESKTOPDIRECTORY, None, 0, buf)  # type: ignore[union-attr]
+            if buf.value:
+                return buf.value
+        except Exception:
+            pass
+    return os.path.join(os.path.expanduser("~"), "Desktop")
+
+
+DESKTOP_PATH = _get_desktop_path()
 
 
 def print_header(title: str) -> None:
@@ -230,15 +248,9 @@ def main() -> int:
             shutil.copy2(installer_path, desktop_dest)
             print(f"[OK] Installer copied to: {desktop_dest}")
         else:
+            desktop_dest = ""
             print(f"[WARNING] Desktop path not found: {DESKTOP_PATH}")
-            alt_desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-            if os.path.isdir(alt_desktop):
-                desktop_dest = os.path.join(alt_desktop, INSTALLER_FILENAME)
-                shutil.copy2(installer_path, desktop_dest)
-                print(f"[OK] Installer copied to: {desktop_dest}")
-            else:
-                desktop_dest = ""
-                print(f"[INFO] Installer available at: {installer_path}")
+            print(f"[INFO] Installer available at: {installer_path}")
     except Exception as e:
         print(f"[WARNING] Could not copy to desktop: {e}")
         print(f"[INFO] Installer available at: {installer_path}")
