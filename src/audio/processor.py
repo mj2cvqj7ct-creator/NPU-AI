@@ -68,8 +68,8 @@ class AudioProcessor:
         self._bypass = False
         self._master_gain = 1.0
 
-        # Smoothed peak for soft-knee limiter
-        self._limiter_state = 0.0
+        # Smoothed peak for soft-knee limiter (init at headroom for instant protection)
+        self._limiter_state = 10 ** (self.config.headroom_db / 20.0)
         # Rolling LUFS estimation window
         self._lufs_buffer: list[float] = []
 
@@ -153,12 +153,16 @@ class AudioProcessor:
         return audio
 
     def _limit_output(self, audio: np.ndarray) -> np.ndarray:
-        """Soft-knee brick-wall limiter."""
+        """Soft-knee brick-wall limiter with instant protection."""
         headroom = 10 ** (self.config.headroom_db / 20.0)
         peak = np.max(np.abs(audio))
 
-        # Smooth envelope
-        attack = 0.002
+        # Instant brick-wall: always clamp if peak exceeds headroom
+        if peak > headroom:
+            audio = np.tanh(audio * (1.0 / headroom)) * headroom
+
+        # Smooth envelope for gradual gain reduction on sustained loud content
+        attack = 0.7
         release = 0.05
         if peak > self._limiter_state:
             self._limiter_state += (peak - self._limiter_state) * attack
@@ -167,7 +171,7 @@ class AudioProcessor:
 
         if self._limiter_state > headroom:
             gain = headroom / self._limiter_state
-            audio = np.tanh(audio * (1.0 / headroom)) * headroom * gain
+            audio = audio * gain
 
         return audio
 
