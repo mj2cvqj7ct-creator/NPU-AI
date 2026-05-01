@@ -67,7 +67,7 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch='arm64',
-    icon=None,  # Set to 'resources/icons/app.ico' when icon is available
+    icon='resources/icons/app.ico',
 )
 
 coll = COLLECT(

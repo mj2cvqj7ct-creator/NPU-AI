@@ -25,3 +25,5 @@ data/
 *.swo
 
 *.spec.bak
+
+installer/output/
