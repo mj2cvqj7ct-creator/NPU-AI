@@ -194,8 +194,8 @@ def install_build_tool(tool: str) -> bool:
     return result.returncode == 0
 
 
-def build_with_pyinstaller() -> str | None:
-    """Build EXE using PyInstaller. Returns EXE path or None."""
+def build_with_pyinstaller() -> tuple[str, str] | None:
+    """Build EXE using PyInstaller. Returns (exe_path, dist_dir) or None."""
     pyinstaller = venv_path("pyinstaller.exe" if sys.platform == "win32"
                             else "pyinstaller")
 
@@ -209,7 +209,8 @@ def build_with_pyinstaller() -> str | None:
     if os.path.isfile("build.spec"):
         print("  Using build.spec...")
         result = run([pyinstaller, "build.spec", "--clean", "--noconfirm"])
-        exe_path = os.path.join("dist", EXE_NAME, f"{EXE_NAME}.exe")
+        dist_dir = os.path.join("dist", EXE_NAME)
+        exe_path = os.path.join(dist_dir, f"{EXE_NAME}.exe")
     else:
         # Build with command line args
         cmd = [
@@ -229,21 +230,22 @@ def build_with_pyinstaller() -> str | None:
             cmd.extend(["--icon", icon])
 
         result = run(cmd)
-        exe_path = os.path.join("dist", EXE_NAME, f"{EXE_NAME}.exe")
+        dist_dir = os.path.join("dist", EXE_NAME)
+        exe_path = os.path.join(dist_dir, f"{EXE_NAME}.exe")
 
     if result.returncode == 0 and os.path.isfile(exe_path):
-        return exe_path
+        return exe_path, dist_dir
 
     # Also check onefile output
     onefile = os.path.join("dist", f"{EXE_NAME}.exe")
     if os.path.isfile(onefile):
-        return onefile
+        return onefile, ""
 
     return None
 
 
-def build_with_cx_freeze() -> str | None:
-    """Build EXE using cx_Freeze. Returns EXE path or None."""
+def build_with_cx_freeze() -> tuple[str, str] | None:
+    """Build EXE using cx_Freeze. Returns (exe_path, dist_dir) or None."""
     py = python_exe()
 
     # Create a temporary cx_Freeze setup script
@@ -267,7 +269,7 @@ setup(
     options={{"build_exe": build_options}},
     executables=[
         Executable(
-            "{ENTRY_POINT}",
+            "{ENTRY_POINT.replace(chr(92), '/')}",
             base="Win32GUI" if sys.platform == "win32" else None,
             target_name="{EXE_NAME}.exe",
             icon=(
@@ -293,17 +295,18 @@ setup(
         if os.path.isdir(build_dir):
             for d in os.listdir(build_dir):
                 if d.startswith("exe"):
-                    exe_path = os.path.join(build_dir, d, f"{EXE_NAME}.exe")
+                    dist_dir = os.path.join(build_dir, d)
+                    exe_path = os.path.join(dist_dir, f"{EXE_NAME}.exe")
                     if os.path.isfile(exe_path):
-                        return exe_path
+                        return exe_path, dist_dir
         return None
     finally:
         if os.path.isfile(setup_file):
             os.remove(setup_file)
 
 
-def build_with_nuitka() -> str | None:
-    """Build EXE using Nuitka. Returns EXE path or None."""
+def build_with_nuitka() -> tuple[str, str] | None:
+    """Build EXE using Nuitka. Returns (exe_path, dist_dir) or None."""
     py = python_exe()
 
     cmd = [
@@ -328,7 +331,7 @@ def build_with_nuitka() -> str | None:
     dist_dir = f"{os.path.splitext(os.path.basename(ENTRY_POINT))[0]}.dist"
     exe_path = os.path.join(dist_dir, f"{EXE_NAME}.exe")
     if os.path.isfile(exe_path):
-        return exe_path
+        return exe_path, dist_dir
     return None
 
 
@@ -339,8 +342,13 @@ BUILD_FUNCTIONS = {
 }
 
 
-def build_exe() -> str | None:
-    """Try each build tool until one succeeds."""
+def build_exe() -> tuple[str, str] | None:
+    """Try each build tool until one succeeds.
+
+    Returns (exe_path, dist_dir) or None.
+    dist_dir is the directory containing the EXE and its dependencies.
+    Empty string means single-file EXE (no dependencies to copy).
+    """
     for tool in BUILD_TOOLS:
         print(f"\n  --- Trying {tool} ---")
         if not install_build_tool(tool):
@@ -352,10 +360,11 @@ def build_exe() -> str | None:
             continue
 
         try:
-            exe_path = build_fn()
-            if exe_path:
+            result = build_fn()
+            if result:
+                exe_path, dist_dir = result
                 print(f"  [OK] Build succeeded with {tool}: {exe_path}")
-                return exe_path
+                return exe_path, dist_dir
             print(f"  [FAIL] {tool} did not produce an EXE")
         except Exception as e:
             print(f"  [FAIL] {tool} error: {e}")
@@ -365,21 +374,26 @@ def build_exe() -> str | None:
 
 # ── Step 5: Copy to Desktop ───────────────────────────────────────
 
-def copy_to_desktop(exe_path: str) -> str:
-    """Copy built EXE (and its folder) to Desktop\\NPU-AI-main."""
+def copy_to_desktop(exe_path: str, dist_dir: str) -> str:
+    """Copy built EXE (and its folder) to Desktop\\NPU-AI-main.
+
+    Args:
+        exe_path: Path to the built EXE.
+        dist_dir: Directory containing EXE and its dependencies.
+                  Empty string means single-file EXE.
+    """
     desktop = get_desktop_path()
     output_dir = os.path.join(desktop, OUTPUT_FOLDER)
     os.makedirs(output_dir, exist_ok=True)
 
-    exe_dir = os.path.dirname(exe_path)
     exe_name = os.path.basename(exe_path)
 
-    # If it's a directory-mode build (PyInstaller COLLECT), copy the folder
-    if exe_dir and os.path.basename(exe_dir) == EXE_NAME:
+    # Directory-mode build: copy entire dist folder
+    if dist_dir and os.path.isdir(dist_dir):
         dest_dir = os.path.join(output_dir, EXE_NAME)
         if os.path.isdir(dest_dir):
             shutil.rmtree(dest_dir)
-        shutil.copytree(exe_dir, dest_dir)
+        shutil.copytree(dist_dir, dest_dir)
         final_exe = os.path.join(dest_dir, exe_name)
         print(f"  [OK] App folder copied to: {dest_dir}")
     else:
@@ -447,18 +461,20 @@ def main() -> int:
 
     # Step 4: Build EXE
     print_step(4, total, "Building EXE (trying multiple tools)...")
-    exe_path = build_exe()
+    build_result = build_exe()
 
-    if not exe_path:
+    if not build_result:
         print("\n  [FATAL] All build tools failed.")
         print("  Please ensure Python 3.11+ is installed correctly.")
         print("  You can still run the app with: python build.py --run")
         input("\n  Press Enter to exit...")
         return 1
 
+    exe_path, dist_dir = build_result
+
     # Step 5: Copy to Desktop
     print_step(5, total, "Copying to Desktop...")
-    final_exe = copy_to_desktop(exe_path)
+    final_exe = copy_to_desktop(exe_path, dist_dir)
 
     # Summary
     desktop = get_desktop_path()
