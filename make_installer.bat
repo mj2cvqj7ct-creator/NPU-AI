@@ -29,13 +29,12 @@ echo [Step 1/4] Setting up virtual environment...
 if not exist "venv" (
     python -m venv venv
 )
-call venv\Scripts\activate.bat
 
-:: Step 2: Install dependencies
+:: Step 2: Install dependencies using full path
 echo [Step 2/4] Installing dependencies...
-pip install --upgrade pip >nul 2>&1
-pip install -r requirements.txt >nul 2>&1
-pip install "pyinstaller>=6.0" >nul 2>&1
+venv\Scripts\pip.exe install --upgrade pip
+venv\Scripts\pip.exe install -r requirements.txt
+venv\Scripts\pip.exe install "pyinstaller>=6.0"
 
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to install dependencies.
@@ -54,10 +53,10 @@ if not exist "data" mkdir data
 if not exist "resources\icons" mkdir resources\icons
 
 :: Generate dummy ONNX models if not present
-python -c "from src.npu.models import create_all_models; create_all_models('models')" 2>nul
+venv\Scripts\python.exe -c "from src.npu.models import create_all_models; create_all_models('models')" 2>nul
 
 :: Run PyInstaller
-pyinstaller build.spec --noconfirm
+venv\Scripts\pyinstaller.exe build.spec --noconfirm
 
 if %errorlevel% neq 0 (
     echo [ERROR] PyInstaller build failed.
@@ -116,13 +115,15 @@ if %errorlevel% neq 0 (
 )
 cd ..
 
-:: Copy installer to desktop
+:: Copy installer to Desktop\NPU-AI-main
 set "DESKTOP=%USERPROFILE%\Desktop"
+set "OUTPUT_DIR=%DESKTOP%\NPU-AI-main"
 set "INSTALLER_FILE=NPU_Audio_Enhancer_Setup_1.0.0.exe"
-if exist "%DESKTOP%" (
+if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
+if exist "%OUTPUT_DIR%" (
     if exist "installer\output\%INSTALLER_FILE%" (
-        copy /Y "installer\output\%INSTALLER_FILE%" "%DESKTOP%\%INSTALLER_FILE%" >nul 2>&1
-        echo [OK] Installer copied to Desktop
+        copy /Y "installer\output\%INSTALLER_FILE%" "%OUTPUT_DIR%\%INSTALLER_FILE%" >nul 2>&1
+        echo [OK] Installer copied to %OUTPUT_DIR%
     ) else (
         echo [WARNING] Installer not found at installer\output\%INSTALLER_FILE%
     )
@@ -133,6 +134,7 @@ echo ============================================================
 echo  Build complete!
 echo ============================================================
 echo.
+echo  Output:    %OUTPUT_DIR%
 echo  EXE:       dist\NPU_Audio_Enhancer\NPU_Audio_Enhancer.exe
 echo  Installer: installer\output\%INSTALLER_FILE%
 echo.

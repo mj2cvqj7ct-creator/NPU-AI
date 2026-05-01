@@ -7,7 +7,7 @@ echo  NPU Audio Enhancer - Build Tool EXE Creator
 echo ============================================================
 echo.
 echo This creates a standalone EXE that builds the app + installer.
-echo The EXE will be copied to your Desktop.
+echo The EXE will be copied to Desktop\NPU-AI-main.
 echo.
 echo ============================================================
 echo.
@@ -22,16 +22,27 @@ if %errorlevel% neq 0 (
 
 :: Setup venv if needed
 if not exist "venv" (
+    echo [Step 1] Creating virtual environment...
     python -m venv venv
+    if %errorlevel% neq 0 (
+        echo [ERROR] Failed to create virtual environment
+        pause
+        exit /b 1
+    )
 )
-call venv\Scripts\activate.bat
 
-:: Install PyInstaller
-pip install "pyinstaller>=6.0" >nul 2>&1
+:: Install PyInstaller using full path
+echo [Step 2] Installing PyInstaller...
+venv\Scripts\pip.exe install "pyinstaller>=6.0"
+if %errorlevel% neq 0 (
+    echo [ERROR] Failed to install PyInstaller
+    pause
+    exit /b 1
+)
 
 :: Build the build tool EXE
-echo Building NPU_Build_Installer.exe...
-pyinstaller build_all.spec --noconfirm
+echo [Step 3] Building NPU_Build_Installer.exe...
+venv\Scripts\pyinstaller.exe build_all.spec --noconfirm
 
 if %errorlevel% neq 0 (
     echo [ERROR] Build failed.
@@ -48,24 +59,16 @@ if not exist "%EXE_PATH%" (
 
 echo [OK] Build tool created: %EXE_PATH%
 
-:: Create Desktop shortcut (sets working directory to project root)
+:: Copy to Desktop\NPU-AI-main
 set "DESKTOP=%USERPROFILE%\Desktop"
-set "PROJECT_DIR=%CD%"
-set "DEST_PATH="
+set "OUTPUT_DIR=%DESKTOP%\NPU-AI-main"
+if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
 
-if exist "%DESKTOP%" (
-    :: Create a shortcut using PowerShell so working directory is set
-    powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('%DESKTOP%\NPU Build Installer.lnk'); $sc.TargetPath = '%PROJECT_DIR%\%EXE_PATH%'; $sc.WorkingDirectory = '%PROJECT_DIR%'; $sc.IconLocation = '%PROJECT_DIR%\resources\icons\app.ico'; $sc.Description = 'Build NPU Audio Enhancer installer'; $sc.Save()" >nul 2>&1
-    if !errorlevel! equ 0 (
-        set "DEST_PATH=%DESKTOP%\NPU Build Installer.lnk"
-        echo [OK] Desktop shortcut created: !DEST_PATH!
-    ) else (
-        :: Fallback: copy EXE directly
-        copy /Y "%EXE_PATH%" "%DESKTOP%\NPU_Build_Installer.exe" >nul
-        set "DEST_PATH=%DESKTOP%\NPU_Build_Installer.exe"
-        echo [OK] Copied to: !DEST_PATH!
-        echo [NOTE] Run from project directory or use --project-dir flag
-    )
+set "DEST_PATH="
+if exist "%OUTPUT_DIR%" (
+    copy /Y "%EXE_PATH%" "%OUTPUT_DIR%\NPU_Build_Installer.exe" >nul
+    set "DEST_PATH=%OUTPUT_DIR%\NPU_Build_Installer.exe"
+    echo [OK] Copied to: !DEST_PATH!
 )
 
 echo.
@@ -74,13 +77,12 @@ echo  Done!
 echo ============================================================
 echo.
 if defined DEST_PATH (
-    echo  Desktop: !DEST_PATH!
+    echo  Output: !DEST_PATH!
 ) else (
     echo  EXE: %EXE_PATH%
 )
 echo.
-echo  Usage: Double-click the shortcut on your Desktop.
-echo         The build tool will automatically find the project.
+echo  Usage: Double-click NPU_Build_Installer.exe in Desktop\NPU-AI-main
 echo.
 
 pause

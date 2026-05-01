@@ -26,16 +26,15 @@ echo [1/5] Creating virtual environment...
 if not exist "venv" (
     python -m venv venv
 )
-call venv\Scripts\activate.bat
 
-REM Install dependencies
+REM Install dependencies using full path
 echo [2/5] Installing dependencies...
-pip install --upgrade pip
-pip install -r requirements.txt
+venv\Scripts\pip.exe install --upgrade pip
+venv\Scripts\pip.exe install -r requirements.txt
 
 REM Install ARM64-specific ONNX Runtime with DirectML
 echo [3/5] Installing ONNX Runtime DirectML for ARM64...
-pip install onnxruntime-directml
+venv\Scripts\pip.exe install onnxruntime-directml
 
 REM Create models directory
 echo [4/5] Setting up resources...
@@ -44,7 +43,8 @@ if not exist "data\recommender" mkdir data\recommender
 
 REM Build EXE
 echo [5/5] Building EXE with PyInstaller...
-pyinstaller build.spec --clean --noconfirm
+venv\Scripts\pip.exe install "pyinstaller>=6.0"
+venv\Scripts\pyinstaller.exe build.spec --clean --noconfirm
 
 echo.
 echo ===================================
