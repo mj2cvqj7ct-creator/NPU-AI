@@ -60,7 +60,7 @@ def print_step(step: int, total: int, msg: str) -> None:
 
 def run(cmd: list[str], cwd: str | None = None,
         check: bool = True, capture: bool = False,
-        timeout: int = 600) -> subprocess.CompletedProcess[str]:
+        timeout: int | None = 600) -> subprocess.CompletedProcess[str]:
     """Run a command, stream output unless capturing."""
     try:
         result = subprocess.run(
@@ -456,7 +456,7 @@ def main() -> int:
     if mode == "run":
         print_header("Starting Application...")
         py = python_exe()
-        result = run([py, "-m", "src.main"])
+        result = run([py, "-m", "src.main"], timeout=None)
         return result.returncode
 
     # Step 4: Build EXE
