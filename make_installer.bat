@@ -34,7 +34,7 @@ call venv\Scripts\activate.bat
 echo [Step 2/4] Installing dependencies...
 pip install --upgrade pip >nul 2>&1
 pip install -r requirements.txt >nul 2>&1
-pip install pyinstaller>=6.0 >nul 2>&1
+pip install "pyinstaller>=6.0" >nul 2>&1
 
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to install dependencies.
