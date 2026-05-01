@@ -1,8 +1,9 @@
 """
-SABAJ A20D DAC Control Panel Widget.
+SABAJ A20D DAC Control Panel Widget (v3 - Enhanced).
 
 Provides UI for DAC configuration including sample rate, bit depth,
-buffer size, latency, and NPU optimization controls.
+buffer size, latency, NPU optimization, DAC filter selection,
+triple-buffering, and buffer health monitoring.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QGroupBox,
     QHBoxLayout,
@@ -20,7 +22,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.dac.xmos_controller import BitDepth, DACStatus, SampleRate
+from src.dac.xmos_controller import BitDepth, DACFilter, DACStatus, SampleRate
 
 
 class DACStatusIndicator(QWidget):
@@ -66,22 +68,25 @@ class DACControlPanel(QGroupBox):
     optimize_requested = pyqtSignal()
 
     def __init__(self, parent=None):
-        super().__init__("SABAJ A20D USB DAC", parent)
+        super().__init__("SABAJ A20D ES9038PRO USB DAC", parent)
 
         layout = QVBoxLayout(self)
+        layout.setSpacing(10)
 
+        # Status row
         status_row = QHBoxLayout()
         self._status_led = DACStatusIndicator()
         self._status_label = QLabel("Disconnected")
         self._status_label.setObjectName("statusLabel")
         self._chip_label = QLabel("DAC: ES9038PRO")
-        self._chip_label.setObjectName("statusLabel")
+        self._chip_label.setObjectName("valueLabel")
         status_row.addWidget(self._status_led)
         status_row.addWidget(self._status_label)
         status_row.addStretch()
         status_row.addWidget(self._chip_label)
         layout.addLayout(status_row)
 
+        # Sample rate + bit depth
         config_row = QHBoxLayout()
 
         sr_group = QVBoxLayout()
@@ -106,6 +111,18 @@ class DACControlPanel(QGroupBox):
 
         layout.addLayout(config_row)
 
+        # DAC filter selection
+        filter_row = QHBoxLayout()
+        filter_row.addWidget(QLabel("DAC Filter"))
+        self._dac_filter = QComboBox()
+        for df in DACFilter:
+            self._dac_filter.addItem(df.value, df.value)
+        self._dac_filter.setCurrentIndex(3)  # Slow Minimum Phase
+        self._dac_filter.currentIndexChanged.connect(self._emit_config)
+        filter_row.addWidget(self._dac_filter, 1)
+        layout.addLayout(filter_row)
+
+        # Buffer + latency
         buffer_row = QHBoxLayout()
 
         buf_group = QVBoxLayout()
@@ -128,12 +145,31 @@ class DACControlPanel(QGroupBox):
 
         layout.addLayout(buffer_row)
 
+        # Triple-buffer + exclusive mode
+        mode_row = QHBoxLayout()
+        self._exclusive_check = QCheckBox("WASAPI Exclusive Mode")
+        self._exclusive_check.setChecked(True)
+        self._exclusive_check.setToolTip("Bit-perfect output via WASAPI exclusive mode")
+        self._exclusive_check.toggled.connect(self._emit_config)
+
+        self._triple_buf_check = QCheckBox("Triple Buffering")
+        self._triple_buf_check.setChecked(True)
+        self._triple_buf_check.setToolTip(
+            "Triple-buffer for zero-dropout NPU streaming"
+        )
+        self._triple_buf_check.toggled.connect(self._emit_config)
+
+        mode_row.addWidget(self._exclusive_check)
+        mode_row.addWidget(self._triple_buf_check)
+        layout.addLayout(mode_row)
+
+        # NPU optimize button + health display
         btn_row = QHBoxLayout()
         self._optimize_btn = QPushButton("NPU Optimize")
         self._optimize_btn.setObjectName("primaryButton")
         self._optimize_btn.clicked.connect(self.optimize_requested.emit)
         self._optimize_btn.setToolTip(
-            "Auto-optimize buffer and latency settings for NPU processing pipeline"
+            "Auto-optimize buffer and latency for NPU processing"
         )
 
         self._info_label = QLabel("")
@@ -144,6 +180,19 @@ class DACControlPanel(QGroupBox):
         btn_row.addWidget(self._info_label, 1)
         layout.addLayout(btn_row)
 
+        # Health monitoring
+        health_row = QHBoxLayout()
+        self._health_label = QLabel("Buffer Health: 100%")
+        self._health_label.setObjectName("valueLabel")
+        self._dropout_label = QLabel("Dropouts: 0")
+        self._dropout_label.setObjectName("statusLabel")
+        self._npu_time_label = QLabel("NPU: -- ms")
+        self._npu_time_label.setObjectName("statusLabel")
+        health_row.addWidget(self._health_label)
+        health_row.addWidget(self._dropout_label)
+        health_row.addWidget(self._npu_time_label)
+        layout.addLayout(health_row)
+
     def _emit_config(self) -> None:
         self.config_changed.emit(self.get_config())
 
@@ -153,6 +202,9 @@ class DACControlPanel(QGroupBox):
             "bit_depth": self._bit_depth.currentData(),
             "buffer_size_ms": self._buffer_size.value(),
             "latency_ms": self._latency.value(),
+            "exclusive_mode": self._exclusive_check.isChecked(),
+            "triple_buffer": self._triple_buf_check.isChecked(),
+            "dac_filter": self._dac_filter.currentData(),
         }
 
     def update_status(self, status_info: dict) -> None:
@@ -167,6 +219,25 @@ class DACControlPanel(QGroupBox):
                     self._sample_rate.setCurrentIndex(i)
                     break
 
+        # Health monitoring
+        health = status_info.get("buffer_health", 1.0)
+        self._health_label.setText(f"Buffer Health: {health * 100:.0f}%")
+        if health >= 0.8:
+            self._health_label.setStyleSheet("color: #00B894;")
+        elif health >= 0.5:
+            self._health_label.setStyleSheet("color: #FDCB6E;")
+        else:
+            self._health_label.setStyleSheet("color: #E17055;")
+
+        dropouts = status_info.get("dropout_count", 0)
+        self._dropout_label.setText(f"Dropouts: {dropouts}")
+
+        npu_ms = status_info.get("npu_processing_ms", 0)
+        npu_peak = status_info.get("npu_peak_ms", 0)
+        self._npu_time_label.setText(
+            f"NPU: {npu_ms:.1f}ms (peak: {npu_peak:.1f}ms)"
+        )
+
     def show_optimization_result(self, settings: dict) -> None:
         """Display NPU optimization results."""
         self._buffer_size.setValue(settings.get("buffer_size_ms", 10))
@@ -174,5 +245,6 @@ class DACControlPanel(QGroupBox):
         self._info_label.setText(
             f"Optimized: buffer={settings.get('buffer_size_ms')}ms, "
             f"latency={settings.get('latency_ms')}ms, "
-            f"ASIO={settings.get('asio_buffer_size', 256)}"
+            f"ASIO={settings.get('asio_buffer_size', 256)}, "
+            f"filter={settings.get('dac_filter', 'N/A')}"
         )
