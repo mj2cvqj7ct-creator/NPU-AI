@@ -135,6 +135,10 @@ class AudioEnhancerApp:
 
                 self._output.write(processed)
 
+                # Report processing time to DAC for adaptive buffer optimization
+                proc_ms = self._processor.stats.processing_time_ms
+                self._dac_controller.report_npu_processing_time(proc_ms)
+
                 with self._lock:
                     self._latest_audio = processed
                     self._latest_viz_data = self._processor.get_visualization_data(processed)

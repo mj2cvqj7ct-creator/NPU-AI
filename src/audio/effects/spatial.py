@@ -1,8 +1,9 @@
 """
 Spatial Audio & Holographic Sound Processing.
 
-Implements HRTF-based spatial positioning, cross-feed processing,
-and holographic soundstage expansion for immersive 3D audio.
+Advanced HRTF-based 3D positioning, cross-feed, stereo width expansion,
+and holographic ambience for immersive soundstage reproduction.
+Optimized for real-time processing on ARM64 NPU.
 """
 
 from __future__ import annotations
@@ -12,112 +13,140 @@ from scipy import signal
 
 
 class SpatialProcessor:
-    """HRTF-based spatial audio processor with holographic soundstage."""
+    """HRTF-based spatial audio with holographic soundstage expansion."""
 
     def __init__(self, sample_rate: int = 48000):
         self.sample_rate = sample_rate
         self.enabled = True
 
+        # Spatial parameters
         self.soundstage_width = 0.7
         self.depth = 0.5
         self.height = 0.3
         self.holographic_intensity = 0.6
         self.crossfeed_level = 0.3
+        self.center_focus = 0.5
+        self.stereo_enhance = 0.4
+        self.immersion = 0.5
 
-        self._hrtf_filters_l: np.ndarray | None = None
-        self._hrtf_filters_r: np.ndarray | None = None
-        self._early_reflection_delays: list[int] = []
-        self._early_reflection_gains: list[float] = []
-        self._late_reverb_filter: np.ndarray | None = None
-        self._crossfeed_filter: np.ndarray | None = None
-        self._prev_left = np.zeros(512, dtype=np.float32)
-        self._prev_right = np.zeros(512, dtype=np.float32)
+        # Internal state
+        self._hrtf_l: np.ndarray = np.zeros(0, dtype=np.float32)
+        self._hrtf_r: np.ndarray = np.zeros(0, dtype=np.float32)
+        self._crossfeed_sos: np.ndarray | None = None
+        self._holographic_bands: list[tuple[np.ndarray, float]] = []
+        self._height_sos: np.ndarray | None = None
+        self._zi_crossfeed_l = None
+        self._zi_crossfeed_r = None
+        self._zi_height: list | None = None
+        self._zi_holo: list[list | None] = []
+        self._overlap_l = np.zeros(0, dtype=np.float32)
+        self._overlap_r = np.zeros(0, dtype=np.float32)
 
-        self._initialize_filters()
+        self._build_filters()
 
-    def update_parameters(self, **kwargs) -> None:
+    def update_parameters(self, **kwargs: float) -> None:
         """Update spatial parameters and rebuild filters."""
+        changed = False
         for key, value in kwargs.items():
-            if hasattr(self, key):
+            if hasattr(self, key) and getattr(self, key) != value:
                 setattr(self, key, value)
-        self._initialize_filters()
+                changed = True
+        if changed:
+            self._build_filters()
 
-    def _initialize_filters(self) -> None:
-        """Generate HRTF approximation filters and spatial processing chains."""
-        filter_len = 128
-        self._generate_hrtf_filters(filter_len)
-        self._generate_early_reflections()
-        self._generate_crossfeed_filter()
-        self._generate_holographic_filter()
+    # ------------------------------------------------------------------
+    # Filter generation
+    # ------------------------------------------------------------------
 
-    def _generate_hrtf_filters(self, filter_len: int) -> None:
-        """Generate simplified HRTF filters for left and right ears."""
-        t = np.arange(filter_len) / self.sample_rate
+    def _build_filters(self) -> None:
+        self._build_hrtf()
+        self._build_crossfeed()
+        self._build_holographic()
+        self._build_height_filter()
 
-        itd_samples = int(0.00065 * self.sample_rate * self.soundstage_width)
+    def _build_hrtf(self) -> None:
+        """Approximate HRTF for left/right ear with ITD + ILD + pinna cues."""
+        fir_len = 256
+        t = np.arange(fir_len, dtype=np.float64) / self.sample_rate
 
-        left_hrtf = np.zeros(filter_len, dtype=np.float32)
-        right_hrtf = np.zeros(filter_len, dtype=np.float32)
+        # Inter-aural time difference scaled by soundstage width
+        itd_s = 0.00065 * self.soundstage_width
+        itd_samples = int(itd_s * self.sample_rate)
 
-        for i in range(filter_len):
-            decay = np.exp(-i / (filter_len * 0.3))
-            left_hrtf[i] = decay * np.sin(2 * np.pi * 1200 * t[i]) * 0.5
-            right_hrtf[i] = decay * np.sin(2 * np.pi * 1100 * t[i]) * 0.5
+        # Build ipsilateral (near-ear) impulse
+        ipsi = np.zeros(fir_len, dtype=np.float64)
+        ipsi[0] = 1.0
+        # Pinna notch around 8-10 kHz
+        pinna_f = 9000.0
+        pinna_decay = np.exp(-np.arange(fir_len, dtype=np.float64) * pinna_f / self.sample_rate)
+        ipsi += pinna_decay * np.sin(2 * np.pi * pinna_f * t) * -0.08
 
-        left_hrtf[0] = 1.0
-        if itd_samples < filter_len:
-            right_hrtf[itd_samples] = 1.0
-
-        head_shadow_freq = 1500.0
-        sos = signal.butter(2, head_shadow_freq / (self.sample_rate / 2), btype="low", output="sos")
-        shadow = signal.sosfilt(sos, np.eye(1, filter_len, 0).flatten())
-
-        contralateral_scale = 0.7 * self.soundstage_width
-        self._hrtf_filters_l = left_hrtf + shadow * (1.0 - contralateral_scale) * 0.3
-        self._hrtf_filters_r = right_hrtf + shadow * contralateral_scale * 0.3
-
-        self._hrtf_filters_l = self._hrtf_filters_l.astype(np.float32)
-        self._hrtf_filters_r = self._hrtf_filters_r.astype(np.float32)
-
-    def _generate_early_reflections(self) -> None:
-        """Generate early reflection pattern for room simulation."""
-        base_delays_ms = [5.2, 8.7, 12.3, 18.1, 25.6, 33.4, 42.8]
-        base_gains = [0.65, 0.52, 0.43, 0.35, 0.28, 0.22, 0.17]
-
-        self._early_reflection_delays = [
-            int(d * self.sample_rate / 1000 * (0.5 + self.depth)) for d in base_delays_ms
-        ]
-        self._early_reflection_gains = [g * self.depth for g in base_gains]
-
-    def _generate_crossfeed_filter(self) -> None:
-        """Generate crossfeed filter for natural speaker-like presentation."""
-        crossfeed_freq = 700.0
-        sos = signal.butter(
-            1, crossfeed_freq / (self.sample_rate / 2), btype="low", output="sos"
-        )
-        impulse = np.zeros(64, dtype=np.float32)
-        impulse[0] = 1.0
-        self._crossfeed_filter = signal.sosfilt(sos, impulse).astype(np.float32)
-
-    def _generate_holographic_filter(self) -> None:
-        """Generate holographic ambience extraction filter."""
+        # Contralateral (far-ear) with head shadow
+        contra = np.zeros(fir_len, dtype=np.float64)
+        delay_idx = min(itd_samples, fir_len - 1)
+        contra[delay_idx] = 0.75 * (1.0 - 0.2 * self.soundstage_width)
+        # Low-pass for head shadow
+        shadow_fc = max(1200.0, 2500.0 - 1000.0 * self.soundstage_width)
         nyq = self.sample_rate / 2.0
+        if shadow_fc < nyq:
+            sos = signal.butter(2, shadow_fc / nyq, btype="low", output="sos")
+            contra = signal.sosfilt(sos, contra)
 
-        bands = [
-            (200, 800, 0.4),
-            (800, 3000, 0.6),
-            (3000, 8000, 0.8),
-            (8000, min(16000, nyq - 1), 0.5),
+        # Normalize
+        ipsi_peak = np.max(np.abs(ipsi))
+        if ipsi_peak > 0:
+            ipsi /= ipsi_peak
+        contra_peak = np.max(np.abs(contra))
+        if contra_peak > 0:
+            contra /= contra_peak
+            contra *= 0.6
+
+        self._hrtf_l = ipsi.astype(np.float32)
+        self._hrtf_r = contra.astype(np.float32)
+        self._overlap_l = np.zeros(fir_len - 1, dtype=np.float32)
+        self._overlap_r = np.zeros(fir_len - 1, dtype=np.float32)
+
+    def _build_crossfeed(self) -> None:
+        """Natural speaker-like crossfeed (Bauer-inspired)."""
+        fc = 650.0 + 100.0 * self.crossfeed_level
+        nyq = self.sample_rate / 2.0
+        if fc >= nyq:
+            fc = nyq * 0.9
+        self._crossfeed_sos = signal.butter(1, fc / nyq, btype="low", output="sos")
+        self._zi_crossfeed_l = signal.sosfilt_zi(self._crossfeed_sos) * 0
+        self._zi_crossfeed_r = signal.sosfilt_zi(self._crossfeed_sos) * 0
+
+    def _build_holographic(self) -> None:
+        """Multi-band holographic ambience extraction filters."""
+        nyq = self.sample_rate / 2.0
+        band_defs = [
+            (150, 600, 0.35),
+            (600, 2500, 0.55),
+            (2500, 7000, 0.75),
+            (7000, min(14000, nyq - 1), 0.45),
         ]
-
         self._holographic_bands = []
-        for low, high, gain in bands:
-            if low >= nyq or high >= nyq:
+        self._zi_holo = []
+        for lo, hi, gain in band_defs:
+            if lo >= nyq or hi >= nyq:
                 continue
-            sos = signal.butter(
-                2, [low / nyq, high / nyq], btype="band", output="sos"
-            )
-            self._holographic_bands.append((sos, gain))
+            sos = signal.butter(3, [lo / nyq, hi / nyq], btype="band", output="sos")
+            self._holographic_bands.append((sos, gain * self.holographic_intensity))
+            self._zi_holo.append(None)
+
+    def _build_height_filter(self) -> None:
+        """Subtle high-shelf boost to simulate elevated source (height cue)."""
+        nyq = self.sample_rate / 2.0
+        fc = min(6000.0, nyq - 1)
+        if fc <= 0:
+            self._height_sos = None
+            return
+        self._height_sos = signal.butter(1, fc / nyq, btype="high", output="sos")
+        self._zi_height = [signal.sosfilt_zi(self._height_sos) * 0 for _ in range(2)]
+
+    # ------------------------------------------------------------------
+    # Processing
+    # ------------------------------------------------------------------
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         """Apply full spatial processing chain."""
@@ -127,99 +156,114 @@ class SpatialProcessor:
         if audio.ndim == 1:
             audio = np.column_stack([audio, audio])
 
-        left = audio[:, 0].copy()
-        right = audio[:, 1].copy()
+        left = audio[:, 0].astype(np.float64)
+        right = audio[:, 1].astype(np.float64)
 
+        # 1. Mid-side decomposition
         mid = (left + right) * 0.5
         side = (left - right) * 0.5
 
-        side *= 1.0 + self.soundstage_width * 1.5
+        # 2. Center focus - keep vocals/center content tight
+        focus = 0.5 + self.center_focus * 0.5
+        mid_out = mid * focus
+        side_out = side * (1.0 + self.stereo_enhance * 0.8)
 
-        left, right = self._apply_crossfeed(left, right)
-        left, right = self._apply_hrtf(left, right)
-        left, right = self._apply_early_reflections(left, right)
-        left, right = self._apply_holographic(left, right, mid, side)
+        # 3. HRTF convolution (overlap-add)
+        mid_out, side_out = self._apply_hrtf(mid_out, side_out)
 
-        output = np.column_stack([left, right]).astype(np.float32)
-        return self._soft_clip(output)
+        # 4. Holographic ambience from side channel
+        if self.holographic_intensity > 0:
+            holo_l, holo_r = self._apply_holographic(side)
+            mid_out = mid_out + holo_l
+            side_out = side_out + holo_r
 
-    def _apply_crossfeed(
-        self, left: np.ndarray, right: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Apply crossfeed for natural imaging."""
-        if self._crossfeed_filter is None or self.crossfeed_level <= 0:
-            return left, right
+        # 5. Height cue
+        if self.height > 0 and self._height_sos is not None:
+            mid_out = self._apply_height(mid_out, 0)
+            side_out = self._apply_height(side_out, 1)
 
-        cross_l = np.convolve(left, self._crossfeed_filter, mode="same") * self.crossfeed_level
-        cross_r = np.convolve(right, self._crossfeed_filter, mode="same") * self.crossfeed_level
+        # 6. Reconstruct L/R
+        out_l = mid_out + side_out
+        out_r = mid_out - side_out
 
-        left_out = left * (1.0 - self.crossfeed_level * 0.5) + cross_r
-        right_out = right * (1.0 - self.crossfeed_level * 0.5) + cross_l
+        # 7. Crossfeed
+        if self.crossfeed_level > 0:
+            out_l, out_r = self._apply_crossfeed(out_l, out_r)
 
-        return left_out, right_out
+        # 8. Immersion blend with original
+        blend = self.immersion
+        out_l = left * (1.0 - blend) + out_l * blend
+        out_r = right * (1.0 - blend) + out_r * blend
+
+        output = np.column_stack([out_l, out_r]).astype(np.float32)
+        return output
 
     def _apply_hrtf(
-        self, left: np.ndarray, right: np.ndarray
+        self, mid: np.ndarray, side: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Apply HRTF filters for spatial positioning."""
-        if self._hrtf_filters_l is None:
-            return left, right
+        """Overlap-add HRTF convolution."""
+        n = len(mid)
+        fir_len = len(self._hrtf_l)
 
-        left_out = np.convolve(left, self._hrtf_filters_l, mode="same")
-        right_out = np.convolve(right, self._hrtf_filters_r, mode="same")
+        conv_l = np.convolve(mid, self._hrtf_l)[:n + fir_len - 1]
+        conv_r = np.convolve(side, self._hrtf_r)[:n + fir_len - 1]
 
-        blend = 0.3 * self.soundstage_width
-        left = left * (1.0 - blend) + left_out * blend
-        right = right * (1.0 - blend) + right_out * blend
+        # Add previous overlap
+        overlap_n = len(self._overlap_l)
+        add_n = min(overlap_n, n)
+        conv_l[:add_n] += self._overlap_l[:add_n]
+        conv_r[:add_n] += self._overlap_r[:add_n]
 
-        return left, right
+        # Save new overlap
+        self._overlap_l = conv_l[n:].astype(np.float32)
+        self._overlap_r = conv_r[n:].astype(np.float32)
 
-    def _apply_early_reflections(
-        self, left: np.ndarray, right: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Add early reflections for depth perception."""
-        if not self._early_reflection_delays:
-            return left, right
-
-        dry_left = left.copy()
-        dry_right = right.copy()
-
-        n = len(left)
-        for delay, gain in zip(self._early_reflection_delays, self._early_reflection_gains):
-            if delay <= 0 or delay >= n:
-                continue
-            left[delay:] += dry_left[:-delay] * gain
-            right[delay:] += dry_right[:-delay] * gain
-
-        return left, right
+        return conv_l[:n], conv_r[:n]
 
     def _apply_holographic(
-        self,
-        left: np.ndarray,
-        right: np.ndarray,
-        mid: np.ndarray,
-        side: np.ndarray,
+        self, side: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Apply holographic ambience enhancement."""
-        if self.holographic_intensity <= 0 or not hasattr(self, "_holographic_bands"):
-            return left, right
+        """Extract ambience and create decorrelated holographic field."""
+        holo_l = np.zeros(len(side), dtype=np.float64)
+        holo_r = np.zeros(len(side), dtype=np.float64)
 
-        ambience_l = np.zeros_like(left)
-        ambience_r = np.zeros_like(right)
+        for i, (sos, gain) in enumerate(self._holographic_bands):
+            zi = self._zi_holo[i]
+            if zi is None:
+                zi = signal.sosfilt_zi(sos) * 0
+            band, zi_out = signal.sosfilt(sos, side, zi=zi)
+            self._zi_holo[i] = zi_out
 
-        for sos, gain in self._holographic_bands:
-            band_side = signal.sosfilt(sos, side)
-            phase_shift = np.roll(band_side, int(self.sample_rate * 0.002))
-            ambience_l += band_side * gain
-            ambience_r -= phase_shift * gain
+            # Decorrelate left/right with phase offset
+            shift = int((i + 1) * 0.003 * self.sample_rate)
+            holo_l += band * gain
+            shifted = np.roll(band, shift)
+            shifted[:shift] = 0
+            holo_r += shifted * gain * 0.9
 
-        intensity = self.holographic_intensity * 0.4
-        left += ambience_l * intensity
-        right += ambience_r * intensity
+        return holo_l, holo_r
 
-        return left, right
+    def _apply_crossfeed(
+        self, left: np.ndarray, right: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Apply crossfeed for natural speaker-like presentation."""
+        level = self.crossfeed_level * 0.35
 
-    @staticmethod
-    def _soft_clip(audio: np.ndarray) -> np.ndarray:
-        """Apply soft clipping to prevent harsh distortion."""
-        return np.tanh(audio * 0.95) / 0.95
+        r_to_l, self._zi_crossfeed_l = signal.sosfilt(
+            self._crossfeed_sos, right, zi=self._zi_crossfeed_l,
+        )
+        l_to_r, self._zi_crossfeed_r = signal.sosfilt(
+            self._crossfeed_sos, left, zi=self._zi_crossfeed_r,
+        )
+
+        out_l = left * (1.0 - level * 0.5) + r_to_l * level
+        out_r = right * (1.0 - level * 0.5) + l_to_r * level
+        return out_l, out_r
+
+    def _apply_height(self, data: np.ndarray, ch_idx: int) -> np.ndarray:
+        """Apply height cue via high-shelf boost."""
+        filtered, zi = signal.sosfilt(
+            self._height_sos, data, zi=self._zi_height[ch_idx],
+        )
+        self._zi_height[ch_idx] = zi
+        return data + filtered * self.height * 0.15

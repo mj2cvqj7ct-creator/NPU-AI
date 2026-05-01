@@ -2,13 +2,16 @@
 NPU Inference Engine.
 
 Manages ONNX Runtime sessions with DirectML execution provider
-for Qualcomm Snapdragon X NPU acceleration.
+for Qualcomm Snapdragon X NPU acceleration. Supports automatic
+fallback NPU -> GPU -> CPU, model lifecycle management, and
+real-time performance monitoring.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -42,13 +45,24 @@ class ModelInfo:
     input_shapes: dict[str, list[int]] = field(default_factory=dict)
     output_names: list[str] = field(default_factory=list)
     loaded: bool = False
+    infer_count: int = 0
+    total_infer_ms: float = 0.0
+
+    @property
+    def avg_infer_ms(self) -> float:
+        if self.infer_count == 0:
+            return 0.0
+        return self.total_infer_ms / self.infer_count
 
 
 class NPUEngine:
     """ONNX Runtime-based NPU inference engine for Snapdragon X.
 
     Supports DirectML for NPU/GPU acceleration with automatic fallback to CPU.
-    Manages multiple models for different audio processing tasks.
+    Manages multiple models for different audio processing tasks:
+      - source_separation: Real-time stem separation masks
+      - recommender: Audio feature embedding extraction
+      - enhancement: Learned spectral enhancement curves
     """
 
     def __init__(self, config: NPUConfig | None = None):
@@ -56,12 +70,14 @@ class NPUEngine:
         self._sessions: dict[str, Any] = {}
         self._models: dict[str, ModelInfo] = {}
         self._active_provider: ExecutionProvider | None = None
-        self._ort = None
+        self._ort: Any = None
+        self._init_time_ms = 0.0
 
         self._initialize_runtime()
 
     def _initialize_runtime(self) -> None:
         """Initialize ONNX Runtime with best available execution provider."""
+        t0 = time.perf_counter()
         try:
             import onnxruntime as ort
 
@@ -89,9 +105,11 @@ class NPUEngine:
         except ImportError:
             logger.warning(
                 "ONNX Runtime not available. NPU acceleration disabled. "
-                "Install onnxruntime-directml for Snapdragon X NPU support."
+                "Install onnxruntime-directml for Snapdragon X NPU support.",
             )
             self._active_provider = None
+
+        self._init_time_ms = (time.perf_counter() - t0) * 1000
 
     @property
     def is_available(self) -> bool:
@@ -127,6 +145,7 @@ class NPUEngine:
                 self._ort.GraphOptimizationLevel.ORT_ENABLE_ALL
             )
             sess_options.intra_op_num_threads = self.config.num_threads
+            sess_options.execution_mode = self._ort.ExecutionMode.ORT_PARALLEL
 
             if self.config.enable_profiling:
                 sess_options.enable_profiling = True
@@ -135,7 +154,7 @@ class NPUEngine:
             if self._active_provider != ExecutionProvider.CPU:
                 providers.append(ExecutionProvider.CPU.value)
 
-            provider_options = []
+            provider_options: list[dict[str, Any]] = []
             if self._active_provider == ExecutionProvider.NPU_DIRECTML:
                 provider_options.append({"device_id": self.config.device_id})
                 if ExecutionProvider.CPU.value in providers:
@@ -148,7 +167,7 @@ class NPUEngine:
                 provider_options=provider_options if provider_options else None,
             )
 
-            input_shapes = {}
+            input_shapes: dict[str, list[int]] = {}
             for inp in session.get_inputs():
                 input_shapes[inp.name] = inp.shape
 
@@ -179,29 +198,45 @@ class NPUEngine:
         model_info = self._models[model_name]
 
         try:
+            t0 = time.perf_counter()
+
             input_name = list(model_info.input_shapes.keys())[0]
             feed = {input_name: input_data.astype(np.float32)}
 
             results = session.run(model_info.output_names, feed)
+
+            elapsed = (time.perf_counter() - t0) * 1000
+            model_info.infer_count += 1
+            model_info.total_infer_ms += elapsed
+
             return results[0] if len(results) == 1 else np.array(results)
 
         except Exception as e:
             logger.error("Inference error for model '%s': %s", model_name, e)
             return None
 
-    def get_device_info(self) -> dict:
+    def get_device_info(self) -> dict[str, Any]:
         """Get NPU/device information."""
-        info = {
+        info: dict[str, Any] = {
             "runtime": "ONNX Runtime" if self._ort else "Not available",
             "provider": self.provider_name,
             "is_npu": self.is_npu_active,
             "models_loaded": len(self._sessions),
             "model_names": list(self._models.keys()),
+            "init_time_ms": round(self._init_time_ms, 1),
         }
 
         if self._ort:
             info["ort_version"] = self._ort.__version__
             info["available_providers"] = self._ort.get_available_providers()
+
+        model_stats = {}
+        for name, mi in self._models.items():
+            model_stats[name] = {
+                "infer_count": mi.infer_count,
+                "avg_ms": round(mi.avg_infer_ms, 2),
+            }
+        info["model_stats"] = model_stats
 
         return info
 

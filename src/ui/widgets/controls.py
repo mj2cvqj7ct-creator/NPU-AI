@@ -2,7 +2,7 @@
 Audio Effect Control Widgets.
 
 Provides styled slider controls, toggle buttons, and parameter panels
-for all audio processing effects.
+for all audio processing effects with modern layout and responsive design.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ class EffectSlider(QWidget):
         default: float = 0.5,
         suffix: str = "",
         decimals: int = 2,
-        parent=None,
+        parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self._min = min_val
@@ -47,7 +47,7 @@ class EffectSlider(QWidget):
 
         self._label = QLabel(label)
         self._label.setMinimumWidth(100)
-        self._label.setMaximumWidth(120)
+        self._label.setMaximumWidth(130)
 
         self._slider = QSlider(Qt.Orientation.Horizontal)
         self._slider.setRange(0, 1000)
@@ -57,7 +57,9 @@ class EffectSlider(QWidget):
         self._value_label = QLabel()
         self._value_label.setObjectName("valueLabel")
         self._value_label.setMinimumWidth(60)
-        self._value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._value_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
         self._update_value_display(default)
 
         layout.addWidget(self._label)
@@ -93,7 +95,7 @@ class SpatialControlPanel(QGroupBox):
 
     params_changed = pyqtSignal(dict)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__("Spatial Audio & Holographic", parent)
 
         layout = QVBoxLayout(self)
@@ -107,21 +109,25 @@ class SpatialControlPanel(QGroupBox):
         self._height = EffectSlider("Height", 0, 1.0, 0.3)
         self._holographic = EffectSlider("Holographic", 0, 1.0, 0.6)
         self._crossfeed = EffectSlider("Crossfeed", 0, 1.0, 0.3)
+        self._center = EffectSlider("Center Focus", 0, 1.0, 0.5)
+        self._stereo = EffectSlider("Stereo Enhance", 0, 1.0, 0.4)
+        self._immersion = EffectSlider("Immersion", 0, 1.0, 0.5)
 
-        for slider in [self._width, self._depth, self._height, self._holographic, self._crossfeed]:
+        sliders = [
+            self._width, self._depth, self._height, self._holographic,
+            self._crossfeed, self._center, self._stereo, self._immersion,
+        ]
+        for slider in sliders:
             slider.value_changed.connect(lambda _: self._emit_params())
 
         layout.addWidget(self._enable)
-        layout.addWidget(self._width)
-        layout.addWidget(self._depth)
-        layout.addWidget(self._height)
-        layout.addWidget(self._holographic)
-        layout.addWidget(self._crossfeed)
+        for slider in sliders:
+            layout.addWidget(slider)
 
     def _emit_params(self) -> None:
         self.params_changed.emit(self.get_params())
 
-    def get_params(self) -> dict:
+    def get_params(self) -> dict[str, object]:
         return {
             "enabled": self._enable.isChecked(),
             "soundstage_width": self._width.value,
@@ -129,6 +135,9 @@ class SpatialControlPanel(QGroupBox):
             "height": self._height.value,
             "holographic_intensity": self._holographic.value,
             "crossfeed_level": self._crossfeed.value,
+            "center_focus": self._center.value,
+            "stereo_enhance": self._stereo.value,
+            "immersion": self._immersion.value,
         }
 
 
@@ -137,7 +146,7 @@ class SeparationControlPanel(QGroupBox):
 
     params_changed = pyqtSignal(dict)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__("Source Separation", parent)
 
         layout = QVBoxLayout(self)
@@ -163,7 +172,7 @@ class SeparationControlPanel(QGroupBox):
     def _emit_params(self) -> None:
         self.params_changed.emit(self.get_params())
 
-    def get_params(self) -> dict:
+    def get_params(self) -> dict[str, object]:
         return {
             "enabled": self._enable.isChecked(),
             "vocal_boost": self._vocal_boost.value,
@@ -178,7 +187,7 @@ class EnhancerControlPanel(QGroupBox):
 
     params_changed = pyqtSignal(dict)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__("Audio Enhancement", parent)
 
         layout = QVBoxLayout(self)
@@ -192,21 +201,24 @@ class EnhancerControlPanel(QGroupBox):
         self._presence = EffectSlider("Presence", 0, 1.0, 0.4)
         self._air = EffectSlider("Air", 0, 1.0, 0.3)
         self._bass_boost = EffectSlider("Bass Boost", 0, 1.0, 0.2)
+        self._exciter = EffectSlider("Harmonic Exciter", 0, 1.0, 0.2)
+        self._stereo_width = EffectSlider("Stereo Width", -0.5, 1.0, 0.0)
 
-        for slider in [self._warmth, self._clarity, self._presence, self._air, self._bass_boost]:
+        sliders = [
+            self._warmth, self._clarity, self._presence, self._air,
+            self._bass_boost, self._exciter, self._stereo_width,
+        ]
+        for slider in sliders:
             slider.value_changed.connect(lambda _: self._emit_params())
 
         layout.addWidget(self._enable)
-        layout.addWidget(self._warmth)
-        layout.addWidget(self._clarity)
-        layout.addWidget(self._presence)
-        layout.addWidget(self._air)
-        layout.addWidget(self._bass_boost)
+        for slider in sliders:
+            layout.addWidget(slider)
 
     def _emit_params(self) -> None:
         self.params_changed.emit(self.get_params())
 
-    def get_params(self) -> dict:
+    def get_params(self) -> dict[str, object]:
         return {
             "enabled": self._enable.isChecked(),
             "warmth": self._warmth.value,
@@ -214,6 +226,8 @@ class EnhancerControlPanel(QGroupBox):
             "presence": self._presence.value,
             "air": self._air.value,
             "bass_boost": self._bass_boost.value,
+            "exciter": self._exciter.value,
+            "stereo_width": self._stereo_width.value,
         }
 
 
@@ -222,7 +236,7 @@ class DepthControlPanel(QGroupBox):
 
     params_changed = pyqtSignal(dict)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__("Depth & Soundstage", parent)
 
         layout = QVBoxLayout(self)
@@ -235,26 +249,32 @@ class DepthControlPanel(QGroupBox):
         self._room = EffectSlider("Room Size", 0, 1.0, 0.4)
         self._damping = EffectSlider("Damping", 0, 1.0, 0.5)
         self._pre_delay = EffectSlider("Pre-delay", 0, 50.0, 15.0, " ms", 0)
+        self._early_ref = EffectSlider("Early Reflections", 0, 1.0, 0.3)
+        self._late_rev = EffectSlider("Late Reverb", 0, 1.0, 0.2)
 
-        for slider in [self._depth, self._room, self._damping, self._pre_delay]:
+        sliders = [
+            self._depth, self._room, self._damping,
+            self._pre_delay, self._early_ref, self._late_rev,
+        ]
+        for slider in sliders:
             slider.value_changed.connect(lambda _: self._emit_params())
 
         layout.addWidget(self._enable)
-        layout.addWidget(self._depth)
-        layout.addWidget(self._room)
-        layout.addWidget(self._damping)
-        layout.addWidget(self._pre_delay)
+        for slider in sliders:
+            layout.addWidget(slider)
 
     def _emit_params(self) -> None:
         self.params_changed.emit(self.get_params())
 
-    def get_params(self) -> dict:
+    def get_params(self) -> dict[str, object]:
         return {
             "enabled": self._enable.isChecked(),
             "depth_amount": self._depth.value,
             "room_size": self._room.value,
             "damping": self._damping.value,
             "pre_delay_ms": self._pre_delay.value,
+            "early_reflection_mix": self._early_ref.value,
+            "late_reverb_mix": self._late_rev.value,
         }
 
 
@@ -265,7 +285,7 @@ class MasterControlBar(QWidget):
     volume_changed = pyqtSignal(float)
     play_toggled = pyqtSignal(bool)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
 
         layout = QHBoxLayout(self)
@@ -296,9 +316,9 @@ class MasterControlBar(QWidget):
         self._play_btn.setText("Stop" if checked else "Start")
         self.play_toggled.emit(checked)
 
-    def set_status(self, text: str) -> None:
-        self._status.setText(text)
-
     @property
     def is_playing(self) -> bool:
         return self._play_btn.isChecked()
+
+    def set_status(self, text: str) -> None:
+        self._status.setText(text)
