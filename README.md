@@ -91,6 +91,24 @@ build.bat
 
 ビルド後のEXEは `dist/NPU_Audio_Enhancer/NPU_Audio_Enhancer.exe` に生成されます。
 
+### 4. インストーラー作成（ワンクリック）
+```batch
+make_installer.bat
+```
+
+EXEビルドからインストーラー作成までを自動実行します。
+生成先: `installer/output/NPU_Audio_Enhancer_Setup_1.0.0.exe`
+
+> **前提:** [Inno Setup 6](https://jrsoftware.org/isdl.php) が必要です。`winget install JRSoftware.InnoSetup` でインストールできます。
+
+### インストーラーの機能
+- デスクトップショートカット作成
+- スタートメニュー登録
+- Windows起動時の自動実行（オプション）
+- PATH追加（オプション）
+- アンインストーラー付き
+- 日本語 / 英語対応
+
 ---
 
 ## Manual Installation

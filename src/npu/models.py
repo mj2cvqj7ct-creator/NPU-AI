@@ -111,6 +111,19 @@ def create_dummy_onnx_model(
         return None
 
 
+def create_all_models(model_dir: str = "models") -> dict[str, str]:
+    """Create all ONNX models in the given directory."""
+    os.makedirs(model_dir, exist_ok=True)
+    created = {}
+    for name, spec in MODEL_REGISTRY.items():
+        path = create_dummy_onnx_model(
+            name, spec["input_shape"], spec["output_shape"], model_dir
+        )
+        if path:
+            created[name] = path
+    return created
+
+
 def ensure_models_exist(model_dir: str = "models") -> dict[str, str]:
     """Ensure all required ONNX models exist, creating placeholders if needed."""
     existing = {}

@@ -66,7 +66,11 @@ def main() -> int:
         window.update_npu_status(npu_info)
         logger.info("NPU Status: %s", npu_info)
 
-    window.show()
+    if "--minimized" in sys.argv:
+        window.showMinimized()
+        logger.info("Application started minimized (auto-start)")
+    else:
+        window.show()
     logger.info("Application window ready")
 
     return app.exec()
