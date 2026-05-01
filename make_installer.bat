@@ -115,13 +115,25 @@ if %errorlevel% neq 0 (
 )
 cd ..
 
+:: Copy installer to desktop
+set "DESKTOP=%USERPROFILE%\Desktop"
+set "INSTALLER_FILE=NPU_Audio_Enhancer_Setup_1.0.0.exe"
+if exist "%DESKTOP%" (
+    if exist "installer\output\%INSTALLER_FILE%" (
+        copy /Y "installer\output\%INSTALLER_FILE%" "%DESKTOP%\%INSTALLER_FILE%" >nul 2>&1
+        echo [OK] Installer copied to Desktop
+    ) else (
+        echo [WARNING] Installer not found at installer\output\%INSTALLER_FILE%
+    )
+)
+
 echo.
 echo ============================================================
 echo  Build complete!
 echo ============================================================
 echo.
 echo  EXE:       dist\NPU_Audio_Enhancer\NPU_Audio_Enhancer.exe
-echo  Installer: installer\output\NPU_Audio_Enhancer_Setup_1.0.0.exe
+echo  Installer: installer\output\%INSTALLER_FILE%
 echo.
 echo  The installer includes:
 echo    - Desktop shortcut

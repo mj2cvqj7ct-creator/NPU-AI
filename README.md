@@ -97,7 +97,16 @@ make_installer.bat
 ```
 
 EXEビルドからインストーラー作成までを自動実行します。
-生成先: `installer/output/NPU_Audio_Enhancer_Setup_1.0.0.exe`
+インストーラーはデスクトップに自動コピーされます。
+
+### 5. ビルドツール自体をEXE化
+```batch
+make_build_exe.bat
+```
+
+デスクトップにショートカットが作成されます。
+ダブルクリックするだけでアプリのビルド→インストーラー作成が完了します。
+プロジェクトディレクトリを自動検出するため、ショートカットからの実行でも正しく動作します。
 
 > **前提:** [Inno Setup 6](https://jrsoftware.org/isdl.php) が必要です。`winget install JRSoftware.InnoSetup` でインストールできます。
 
