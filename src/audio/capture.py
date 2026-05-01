@@ -168,26 +168,68 @@ class WASAPICapture:
         logger.info("Audio capture stopped")
 
     def _capture_loop_wasapi(self) -> None:
-        """Main WASAPI capture loop."""
+        """Main WASAPI capture loop using COM audio capture client."""
         try:
+            import ctypes
             import time
 
-            buffer_duration = self.config.buffer_size_ms / 1000.0
-            frames = self.config.buffer_frames
+            from comtypes import GUID
+
+            AUDCLNT_SHAREMODE_SHARED = 0
+            AUDCLNT_STREAMFLAGS_LOOPBACK = 0x00020000
+            REFTIMES_PER_SEC = 10_000_000
+
+            client = self._wasapi_client
+            mix_format = client.GetMixFormat()
+            buffer_duration_hns = int(
+                REFTIMES_PER_SEC * self.config.buffer_size_ms / 1000
+            )
+
+            client.Initialize(
+                AUDCLNT_SHAREMODE_SHARED,
+                AUDCLNT_STREAMFLAGS_LOOPBACK,
+                buffer_duration_hns,
+                0,
+                mix_format,
+                None,
+            )
+
+            IID_IAudioCaptureClient = GUID("{C8ADBD64-E71E-48a0-A4DE-185C395CD317}")
+            capture_client = client.GetService(IID_IAudioCaptureClient)
+
+            client.Start()
+            logger.info("WASAPI loopback capture started via COM")
+
+            channels = mix_format.contents.nChannels
 
             while self._is_capturing:
                 try:
-                    audio_data = np.zeros(
-                        (frames, self.config.format.channels), dtype=np.float32
-                    )
-                    self._dispatch_audio(audio_data)
-                    time.sleep(buffer_duration)
+                    packet_length = capture_client.GetNextPacketSize()
+                    while packet_length > 0:
+                        data_ptr, num_frames, flags, _, _ = capture_client.GetBuffer()
+
+                        if num_frames > 0 and data_ptr:
+                            byte_count = num_frames * channels * 4  # float32
+                            raw = (ctypes.c_byte * byte_count).from_address(data_ptr)
+                            audio_data = np.frombuffer(raw, dtype=np.float32).reshape(
+                                num_frames, channels
+                            ).copy()
+                            self._dispatch_audio(audio_data)
+
+                        capture_client.ReleaseBuffer(num_frames)
+                        packet_length = capture_client.GetNextPacketSize()
+
+                    time.sleep(self.config.buffer_size_ms / 2000.0)
+
                 except Exception as e:
                     logger.error("WASAPI capture error: %s", e)
                     time.sleep(0.001)
+
+            client.Stop()
+
         except Exception as e:
-            logger.error("WASAPI capture loop failed: %s", e)
-            self._is_capturing = False
+            logger.warning("WASAPI COM capture failed, falling back to sounddevice: %s", e)
+            self._capture_loop_sounddevice()
 
     def _capture_loop_sounddevice(self) -> None:
         """Sounddevice fallback capture loop."""

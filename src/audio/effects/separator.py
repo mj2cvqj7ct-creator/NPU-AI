@@ -100,11 +100,11 @@ class SourceSeparator:
             input_data = magnitude.reshape(1, 1, -1).astype(np.float32)
             masks = self._npu_engine.infer("source_separation", input_data)
 
-            if masks is not None and len(masks) >= self.config.num_stems:
+            if masks is not None and masks.ndim >= 2 and masks.shape[1] >= self.config.num_stems:
                 stems = {}
                 stem_names = ["vocals", "drums", "bass", "other"]
                 for i, name in enumerate(stem_names):
-                    mask = masks[i] if i < len(masks) else np.ones_like(magnitude)
+                    mask = masks[0, i] if i < masks.shape[1] else np.ones_like(magnitude)
                     stem_stft = stft * mask.flatten()[: len(stft)]
                     stem_mono = np.fft.irfft(stem_stft, n=len(mono))
                     stems[name] = np.column_stack([stem_mono, stem_mono])
