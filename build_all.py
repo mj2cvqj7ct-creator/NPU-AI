@@ -38,7 +38,7 @@ def print_step(step: int, total: int, msg: str) -> None:
 
 
 def find_python() -> str:
-    """Find a system Python executable."""
+    """Find a system Python 3 executable path."""
     candidates = [("python",), ("python3",), ("py", "-3")]
     for cmd in candidates:
         try:
@@ -49,6 +49,15 @@ def find_python() -> str:
                 timeout=10,
             )
             if result.returncode == 0:
+                # Resolve the real executable path (handles py -3 launcher)
+                resolve = subprocess.run(
+                    list(cmd) + ["-c", "import sys; print(sys.executable)"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if resolve.returncode == 0 and resolve.stdout.strip():
+                    return resolve.stdout.strip()
                 found = shutil.which(cmd[0])
                 if found:
                     return found
