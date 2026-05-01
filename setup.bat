@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 REM ============================================================
 REM NPU Audio Enhancer - First-time Setup Script
 REM ============================================================
@@ -21,13 +22,14 @@ if errorlevel 1 (
 
 REM Create virtual environment
 echo [1/4] Creating virtual environment...
-python -m venv venv
-call venv\Scripts\activate.bat
+if not exist "venv" (
+    python -m venv venv
+)
 
-REM Install core dependencies
+REM Install core dependencies using full path
 echo [2/4] Installing dependencies...
-pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
+venv\Scripts\pip.exe install --upgrade pip setuptools wheel
+venv\Scripts\pip.exe install -r requirements.txt
 
 REM Install XMOS USB DAC driver support
 echo [3/4] Setting up audio drivers...
