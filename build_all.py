@@ -125,11 +125,60 @@ def run_cmd(cmd: str | list[str], cwd: str | None = None, check: bool = True) ->
         return 1
 
 
+_PROJECT_SENTINELS = ("requirements.txt", "build.spec", "pyproject.toml")
+
+
 def get_project_dir() -> str:
-    """Get the project root directory."""
-    if getattr(sys, "frozen", False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.abspath(__file__))
+    """Get the project root directory.
+
+    When running as a frozen EXE, the EXE may have been copied away from the
+    project (e.g. to Desktop). Search for sentinel files to locate the real
+    project root, falling back to a user prompt if not found.
+    """
+    if not getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(__file__))
+
+    # 1. Check directory containing the EXE
+    exe_dir = os.path.dirname(sys.executable)
+    if _is_project_root(exe_dir):
+        return exe_dir
+
+    # 2. Check current working directory
+    cwd = os.getcwd()
+    if _is_project_root(cwd):
+        return cwd
+
+    # 3. Check --project-dir argument
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if arg.startswith("--project-dir="):
+            candidate = arg.split("=", 1)[1]
+            if _is_project_root(candidate):
+                return candidate
+        elif arg == "--project-dir" and i < len(sys.argv) - 1:
+            candidate = sys.argv[i + 1]
+            if _is_project_root(candidate):
+                return candidate
+
+    # 4. Prompt user
+    print("[WARNING] Project directory not found at EXE location.")
+    print("          Please enter the path to the NPU-AI project folder,")
+    print("          or drag-and-drop the folder here:")
+    print()
+    user_path = input("Project path: ").strip().strip('"')
+    if user_path and _is_project_root(user_path):
+        return user_path
+
+    print(f"[ERROR] '{user_path}' is not a valid project directory.")
+    print(f"        Expected to find: {', '.join(_PROJECT_SENTINELS)}")
+    input("Press Enter to exit...")
+    sys.exit(1)
+
+
+def _is_project_root(path: str) -> bool:
+    """Check if a directory contains project sentinel files."""
+    if not os.path.isdir(path):
+        return False
+    return any(os.path.isfile(os.path.join(path, s)) for s in _PROJECT_SENTINELS)
 
 
 def main() -> int:

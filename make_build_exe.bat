@@ -47,14 +47,24 @@ if not exist "%EXE_PATH%" (
 
 echo [OK] Build tool created: %EXE_PATH%
 
-:: Copy to Desktop
+:: Create Desktop shortcut (sets working directory to project root)
 set "DESKTOP=%USERPROFILE%\Desktop"
+set "PROJECT_DIR=%CD%"
+set "COPIED=0"
+
 if exist "%DESKTOP%" (
-    copy /Y "%EXE_PATH%" "%DESKTOP%\NPU_Build_Installer.exe" >nul
-    echo [OK] Copied to: %DESKTOP%\NPU_Build_Installer.exe
-) else (
-    echo [WARNING] Desktop path not found: %DESKTOP%
-    echo          EXE is at: %EXE_PATH%
+    :: Create a shortcut using PowerShell so working directory is set
+    powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('%DESKTOP%\NPU Build Installer.lnk'); $sc.TargetPath = '%PROJECT_DIR%\%EXE_PATH%'; $sc.WorkingDirectory = '%PROJECT_DIR%'; $sc.IconLocation = '%PROJECT_DIR%\resources\icons\app.ico'; $sc.Description = 'Build NPU Audio Enhancer installer'; $sc.Save()" >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo [OK] Desktop shortcut created: %DESKTOP%\NPU Build Installer.lnk
+        set "COPIED=1"
+    ) else (
+        :: Fallback: copy EXE directly
+        copy /Y "%EXE_PATH%" "%DESKTOP%\NPU_Build_Installer.exe" >nul
+        echo [OK] Copied to: %DESKTOP%\NPU_Build_Installer.exe
+        echo [NOTE] Run from project directory or use --project-dir flag
+        set "COPIED=1"
+    )
 )
 
 echo.
@@ -62,13 +72,14 @@ echo ============================================================
 echo  Done!
 echo ============================================================
 echo.
-echo  EXE: %DESKTOP%\NPU_Build_Installer.exe
+if "%COPIED%"=="1" (
+    echo  Shortcut: %DESKTOP%\NPU Build Installer.lnk
+) else (
+    echo  EXE: %EXE_PATH%
+)
 echo.
-echo  Usage: Double-click NPU_Build_Installer.exe on your Desktop
-echo         to build the app and create the installer.
-echo.
-echo  NOTE: The EXE must be run from the project directory,
-echo        or copy the entire project folder alongside it.
+echo  Usage: Double-click the shortcut on your Desktop.
+echo         The build tool will automatically find the project.
 echo.
 
 pause

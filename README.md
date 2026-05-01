@@ -104,8 +104,9 @@ EXEビルドからインストーラー作成までを自動実行します。
 make_build_exe.bat
 ```
 
-`NPU_Build_Installer.exe` がデスクトップに生成されます。
+デスクトップにショートカットが作成されます。
 ダブルクリックするだけでアプリのビルド→インストーラー作成が完了します。
+プロジェクトディレクトリを自動検出するため、ショートカットからの実行でも正しく動作します。
 
 > **前提:** [Inno Setup 6](https://jrsoftware.org/isdl.php) が必要です。`winget install JRSoftware.InnoSetup` でインストールできます。
 
