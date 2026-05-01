@@ -116,7 +116,7 @@ if %errorlevel% neq 0 (
 cd ..
 
 :: Copy installer to desktop
-set "DESKTOP=C:\Users\look5\Desktop"
+set "DESKTOP=%USERPROFILE%\Desktop"
 set "INSTALLER_FILE=NPU_Audio_Enhancer_Setup_1.0.0.exe"
 if exist "%DESKTOP%" (
     if exist "installer\output\%INSTALLER_FILE%" (

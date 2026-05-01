@@ -48,7 +48,7 @@ if not exist "%EXE_PATH%" (
 echo [OK] Build tool created: %EXE_PATH%
 
 :: Copy to Desktop
-set "DESKTOP=C:\Users\look5\Desktop"
+set "DESKTOP=%USERPROFILE%\Desktop"
 if exist "%DESKTOP%" (
     copy /Y "%EXE_PATH%" "%DESKTOP%\NPU_Build_Installer.exe" >nul
     echo [OK] Copied to: %DESKTOP%\NPU_Build_Installer.exe

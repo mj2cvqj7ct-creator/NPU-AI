@@ -23,7 +23,7 @@ import sys
 APP_NAME = "NPU Audio Enhancer"
 APP_VERSION = "1.0.0"
 INSTALLER_FILENAME = f"NPU_Audio_Enhancer_Setup_{APP_VERSION}.exe"
-DESKTOP_PATH = r"C:\Users\look5\Desktop"
+DESKTOP_PATH = os.path.join(os.path.expanduser("~"), "Desktop")
 
 
 def print_header(title: str) -> None:
