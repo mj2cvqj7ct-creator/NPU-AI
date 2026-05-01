@@ -236,10 +236,11 @@ def build_with_pyinstaller() -> tuple[str, str] | None:
     if result.returncode == 0 and os.path.isfile(exe_path):
         return exe_path, dist_dir
 
-    # Also check onefile output
-    onefile = os.path.join("dist", f"{EXE_NAME}.exe")
-    if os.path.isfile(onefile):
-        return onefile, ""
+    # Also check onefile output (only if build succeeded)
+    if result.returncode == 0:
+        onefile = os.path.join("dist", f"{EXE_NAME}.exe")
+        if os.path.isfile(onefile):
+            return onefile, ""
 
     return None
 
