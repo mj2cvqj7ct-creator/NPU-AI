@@ -1,0 +1,2 @@
+# NPU-AI
+ARM64スナドラXのNPUを使用しリアルタイムでSpotify、アップルミュージック、youtubemusicの定位と音場とホログラフィック感と奥行きで楽器も完全に分離しボーカルも際立つ音質とアルゴリズムを劇的に向上させ、レコメンド機能もリアルタイムでディープラーニングしSABAJ A20D(ES)のXMOS USB DAC Driver Control PanelとWASAPI排他モードがNPUでレイテンシ、バッファ値で音切れなくNPUに繋いで高音質化し、モダンで洗練されたUIでWindowsのEXEを作成して下さい。
