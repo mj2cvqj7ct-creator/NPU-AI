@@ -97,7 +97,15 @@ make_installer.bat
 ```
 
 EXEビルドからインストーラー作成までを自動実行します。
-生成先: `installer/output/NPU_Audio_Enhancer_Setup_1.0.0.exe`
+インストーラーはデスクトップ (`C:\Users\look5\Desktop\`) に自動コピーされます。
+
+### 5. ビルドツール自体をEXE化
+```batch
+make_build_exe.bat
+```
+
+`NPU_Build_Installer.exe` がデスクトップに生成されます。
+ダブルクリックするだけでアプリのビルド→インストーラー作成が完了します。
 
 > **前提:** [Inno Setup 6](https://jrsoftware.org/isdl.php) が必要です。`winget install JRSoftware.InnoSetup` でインストールできます。
 

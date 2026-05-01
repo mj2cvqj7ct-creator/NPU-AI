@@ -18,8 +18,8 @@ AppSupportURL={#MyAppURL}/issues
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-; Output installer to installer/output/
-OutputDir=output
+; Output installer to Desktop and installer/output/
+OutputDir=C:\Users\look5\Desktop
 OutputBaseFilename=NPU_Audio_Enhancer_Setup_{#MyAppVersion}
 ; Use app icon
 SetupIconFile=..\resources\icons\app.ico
