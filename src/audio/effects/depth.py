@@ -27,6 +27,13 @@ class DepthProcessor:
         self._reverb = SchroederReverb(sample_rate)
         self._distance_filter = self._create_distance_filter()
 
+    def update_parameters(self, **kwargs) -> None:
+        """Update depth parameters and rebuild filters."""
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+        self._distance_filter = self._create_distance_filter()
+
     def _create_distance_filter(self) -> np.ndarray:
         """Create frequency-dependent distance simulation filter.
 

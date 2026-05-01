@@ -133,11 +133,12 @@ class RecommendationEngine:
 
         if self._npu_engine is not None:
             try:
-                input_data = mono[:128].reshape(1, 128).astype(np.float32)
-                if len(input_data[0]) < 128:
-                    padded = np.zeros((1, 128), dtype=np.float32)
-                    padded[0, : len(input_data[0])] = input_data[0]
+                input_data = mono[:128].astype(np.float32)
+                if len(input_data) < 128:
+                    padded = np.zeros(128, dtype=np.float32)
+                    padded[: len(input_data)] = input_data
                     input_data = padded
+                input_data = input_data.reshape(1, 128)
 
                 embedding = self._npu_engine.infer("recommender", input_data)
                 if embedding is not None:

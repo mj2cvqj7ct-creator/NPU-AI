@@ -311,12 +311,8 @@ class MainWindow(QMainWindow):
     def _on_spatial_changed(self, params: dict) -> None:
         if self._app:
             spatial = self._app.processor.spatial
-            spatial.enabled = params.get("enabled", True)
-            spatial.soundstage_width = params.get("soundstage_width", 0.7)
-            spatial.depth = params.get("depth", 0.5)
-            spatial.height = params.get("height", 0.3)
-            spatial.holographic_intensity = params.get("holographic_intensity", 0.6)
-            spatial.crossfeed_level = params.get("crossfeed_level", 0.3)
+            spatial.enabled = params.pop("enabled", True)
+            spatial.update_parameters(**params)
 
     @pyqtSlot(dict)
     def _on_separation_changed(self, params: dict) -> None:
@@ -340,11 +336,8 @@ class MainWindow(QMainWindow):
     def _on_depth_changed(self, params: dict) -> None:
         if self._app:
             depth = self._app.processor.depth
-            depth.enabled = params.get("enabled", True)
-            depth.depth_amount = params.get("depth_amount", 0.5)
-            depth.room_size = params.get("room_size", 0.4)
-            depth.damping = params.get("damping", 0.5)
-            depth.pre_delay_ms = params.get("pre_delay_ms", 15.0)
+            depth.enabled = params.pop("enabled", True)
+            depth.update_parameters(**params)
 
     @pyqtSlot()
     def _on_optimize_dac(self) -> None:

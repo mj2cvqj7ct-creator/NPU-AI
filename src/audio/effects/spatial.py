@@ -35,6 +35,13 @@ class SpatialProcessor:
 
         self._initialize_filters()
 
+    def update_parameters(self, **kwargs) -> None:
+        """Update spatial parameters and rebuild filters."""
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+        self._initialize_filters()
+
     def _initialize_filters(self) -> None:
         """Generate HRTF approximation filters and spatial processing chains."""
         filter_len = 128
@@ -174,14 +181,15 @@ class SpatialProcessor:
         if not self._early_reflection_delays:
             return left, right
 
+        dry_left = left.copy()
+        dry_right = right.copy()
+
         n = len(left)
         for delay, gain in zip(self._early_reflection_delays, self._early_reflection_gains):
-            if delay >= n:
+            if delay <= 0 or delay >= n:
                 continue
-            left[delay:] += left[:-delay] if delay > 0 else left
-            right[delay:] += right[:-delay] if delay > 0 else right
-            left[delay:] *= (1.0 + gain * 0.1)
-            right[delay:] *= (1.0 + gain * 0.1)
+            left[delay:] += dry_left[:-delay] * gain
+            right[delay:] += dry_right[:-delay] * gain
 
         return left, right
 
