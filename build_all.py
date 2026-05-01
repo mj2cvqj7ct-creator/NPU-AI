@@ -252,6 +252,7 @@ def main() -> int:
             print(f"[WARNING] Desktop path not found: {DESKTOP_PATH}")
             print(f"[INFO] Installer available at: {installer_path}")
     except Exception as e:
+        desktop_dest = ""
         print(f"[WARNING] Could not copy to desktop: {e}")
         print(f"[INFO] Installer available at: {installer_path}")
 

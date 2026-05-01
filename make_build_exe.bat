@@ -6,7 +6,7 @@ echo  NPU Audio Enhancer - Build Tool EXE Creator
 echo ============================================================
 echo.
 echo This creates a standalone EXE that builds the app + installer.
-echo The EXE will be copied to: C:\Users\look5\Desktop\
+echo The EXE will be copied to your Desktop.
 echo.
 echo ============================================================
 echo.
