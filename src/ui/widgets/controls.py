@@ -1,10 +1,10 @@
 """
-Audio Effect Control Widgets (v3 - Enhanced).
+Audio Effect Control Widgets (v3.1 - Enhanced).
 
-Provides styled slider controls, toggle buttons, and parameter panels
-for all audio processing effects including new v3 controls for
+Provides styled slider controls, toggle buttons, parameter panels,
+and a preset selector for all audio processing effects including
 transient shaping, psychoacoustic bass, multiband compression,
-LUFS normalization, and allpass diffusion.
+LUFS normalization, allpass diffusion, and preset management.
 """
 
 from __future__ import annotations
@@ -12,14 +12,18 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QPushButton,
     QSlider,
     QVBoxLayout,
     QWidget,
 )
+
+from src.presets import PresetManager
 
 
 class EffectSlider(QWidget):
@@ -145,6 +149,18 @@ class SpatialControlPanel(QGroupBox):
             "diffusion": self._diffusion.value,
         }
 
+    def set_params(self, params: dict) -> None:
+        self._enable.setChecked(params.get("spatial_enabled", True))
+        self._width.value = params.get("soundstage_width", 0.7)
+        self._depth.value = params.get("depth", 0.5)
+        self._height.value = params.get("height", 0.3)
+        self._holographic.value = params.get("holographic_intensity", 0.6)
+        self._crossfeed.value = params.get("crossfeed_level", 0.3)
+        self._center.value = params.get("center_focus", 0.5)
+        self._stereo.value = params.get("stereo_enhance", 0.4)
+        self._immersion.value = params.get("immersion", 0.5)
+        self._diffusion.value = params.get("diffusion", 0.3)
+
 
 class SeparationControlPanel(QGroupBox):
     """Control panel for source separation settings."""
@@ -191,6 +207,14 @@ class SeparationControlPanel(QGroupBox):
             "drum_punch": self._drums.value,
             "wiener_iterations": int(self._wiener.value),
         }
+
+    def set_params(self, params: dict) -> None:
+        self._enable.setChecked(params.get("separation_enabled", True))
+        self._vocal_boost.value = params.get("vocal_boost", 0.3)
+        self._instrument.value = params.get("instrument_clarity", 0.5)
+        self._bass.value = params.get("bass_enhance", 0.2)
+        self._drums.value = params.get("drum_punch", 0.2)
+        self._wiener.value = params.get("wiener_iterations", 3)
 
 
 class EnhancerControlPanel(QGroupBox):
@@ -251,6 +275,20 @@ class EnhancerControlPanel(QGroupBox):
             "loudness_target": self._lufs_target.value,
         }
 
+    def set_params(self, params: dict) -> None:
+        self._enable.setChecked(params.get("enhancer_enabled", True))
+        self._warmth.value = params.get("warmth", 0.3)
+        self._clarity.value = params.get("clarity", 0.5)
+        self._presence.value = params.get("presence", 0.4)
+        self._air.value = params.get("air", 0.3)
+        self._bass_boost.value = params.get("bass_boost", 0.2)
+        self._exciter.value = params.get("exciter", 0.2)
+        self._transient.value = params.get("transient_shape", 0.0)
+        self._psych_bass.value = params.get("psychoacoustic_bass", 0.3)
+        self._compression.value = params.get("multiband_compression", 0.3)
+        self._stereo_width.value = params.get("stereo_width", 0.0)
+        self._lufs_target.value = params.get("loudness_target", -14.0)
+
 
 class DepthControlPanel(QGroupBox):
     """Control panel for depth and soundstage processing (v3)."""
@@ -304,6 +342,93 @@ class DepthControlPanel(QGroupBox):
             "diffusion": self._diffusion.value,
             "modulation_depth": self._modulation.value,
         }
+
+    def set_params(self, params: dict) -> None:
+        self._enable.setChecked(params.get("depth_enabled", True))
+        self._depth.value = params.get("depth_amount", 0.5)
+        self._room.value = params.get("room_size", 0.4)
+        self._damping.value = params.get("damping", 0.5)
+        self._damp_lo.value = params.get("damp_lo", 0.3)
+        self._pre_delay.value = params.get("pre_delay_ms", 15.0)
+        self._early_ref.value = params.get("early_reflection_mix", 0.3)
+        self._late_rev.value = params.get("late_reverb_mix", 0.2)
+        self._diffusion.value = params.get("depth_diffusion", 0.7)
+        self._modulation.value = params.get("modulation_depth", 0.3)
+
+
+class PresetSelector(QWidget):
+    """Preset selector with save/load/delete controls."""
+
+    preset_selected = pyqtSignal(str)
+    save_requested = pyqtSignal(str)
+    delete_requested = pyqtSignal(str)
+
+    def __init__(self, preset_manager: PresetManager, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._manager = preset_manager
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 8, 4)
+
+        label = QLabel("Preset:")
+        label.setStyleSheet("color: #A29BFE; font-weight: bold;")
+
+        self._combo = QComboBox()
+        self._combo.setMinimumWidth(180)
+        self._refresh_list()
+        self._combo.currentTextChanged.connect(self._on_preset_selected)
+
+        self._save_btn = QPushButton("Save")
+        self._save_btn.setMaximumWidth(60)
+        self._save_btn.clicked.connect(self._on_save_clicked)
+
+        self._delete_btn = QPushButton("Delete")
+        self._delete_btn.setMaximumWidth(60)
+        self._delete_btn.clicked.connect(self._on_delete_clicked)
+
+        layout.addWidget(label)
+        layout.addWidget(self._combo, 1)
+        layout.addWidget(self._save_btn)
+        layout.addWidget(self._delete_btn)
+
+    def _refresh_list(self) -> None:
+        current = self._combo.currentText()
+        self._combo.blockSignals(True)
+        self._combo.clear()
+        self._combo.addItems(self._manager.all_preset_names)
+        idx = self._combo.findText(current)
+        if idx >= 0:
+            self._combo.setCurrentIndex(idx)
+        self._combo.blockSignals(False)
+
+    def _on_preset_selected(self, name: str) -> None:
+        if name:
+            self.preset_selected.emit(name)
+
+    def _on_save_clicked(self) -> None:
+        name, ok = QInputDialog.getText(
+            self, "Save Preset", "Preset name:", text=self._combo.currentText(),
+        )
+        if ok and name.strip():
+            self.save_requested.emit(name.strip())
+            self._refresh_list()
+            self._combo.setCurrentText(name.strip())
+
+    def _on_delete_clicked(self) -> None:
+        name = self._combo.currentText()
+        if name and not self._manager.is_builtin(name):
+            self.delete_requested.emit(name)
+            self._refresh_list()
+
+    def set_preset_name(self, name: str) -> None:
+        idx = self._combo.findText(name)
+        if idx >= 0:
+            self._combo.blockSignals(True)
+            self._combo.setCurrentIndex(idx)
+            self._combo.blockSignals(False)
+
+    def refresh(self) -> None:
+        self._refresh_list()
 
 
 class MasterControlBar(QWidget):

@@ -42,7 +42,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("NPU Audio Enhancer")
     app.setOrganizationName("NPU-AI")
-    app.setApplicationVersion("3.0.0")
+    app.setApplicationVersion("3.1.0")
 
     font = QFont("Segoe UI", 10)
     app.setFont(font)

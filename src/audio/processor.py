@@ -207,5 +207,5 @@ class AudioProcessor:
         return {
             "spectrum": spectrum_db.tolist(),
             "waveform": waveform.tolist(),
-            "stem_levels": {},
+            "stem_levels": dict(self._separator._stem_levels),
         }

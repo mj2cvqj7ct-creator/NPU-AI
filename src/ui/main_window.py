@@ -9,10 +9,11 @@ audio processing controls.
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot
-from PyQt6.QtGui import QAction, QFont
+from PyQt6.QtGui import QAction, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -25,11 +26,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.presets import EffectPreset, PresetManager
 from src.ui.styles import DARK_THEME
 from src.ui.widgets.controls import (
     DepthControlPanel,
     EnhancerControlPanel,
     MasterControlBar,
+    PresetSelector,
     SeparationControlPanel,
     SpatialControlPanel,
 )
@@ -53,6 +56,7 @@ class MainWindow(QMainWindow):
     def __init__(self, app_controller: AudioEnhancerApp | None = None):
         super().__init__()
         self._app = app_controller
+        self._preset_manager = PresetManager()
 
         self.setWindowTitle("NPU Audio Enhancer - Snapdragon X Elite")
         self.setMinimumSize(1200, 800)
@@ -64,6 +68,7 @@ class MainWindow(QMainWindow):
         self._setup_status_bar()
         self._setup_timers()
         self._connect_signals()
+        self._setup_shortcuts()
 
     def _setup_ui(self) -> None:
         """Build the main UI layout."""
@@ -78,6 +83,9 @@ class MainWindow(QMainWindow):
 
         self._master_bar = MasterControlBar()
         main_layout.addWidget(self._master_bar)
+
+        self._preset_selector = PresetSelector(self._preset_manager)
+        main_layout.addWidget(self._preset_selector)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
@@ -302,6 +310,10 @@ class MainWindow(QMainWindow):
         self._recommender_panel.track_liked.connect(self._on_track_liked)
         self._recommender_panel.track_skipped.connect(self._on_track_skipped)
 
+        self._preset_selector.preset_selected.connect(self._on_preset_selected)
+        self._preset_selector.save_requested.connect(self._on_preset_save)
+        self._preset_selector.delete_requested.connect(self._on_preset_delete)
+
     @pyqtSlot(bool)
     def _on_play_toggled(self, playing: bool) -> None:
         if self._app:
@@ -378,6 +390,115 @@ class MainWindow(QMainWindow):
     def _on_track_skipped(self) -> None:
         if self._app:
             self._app.on_track_skipped()
+
+    @pyqtSlot(str)
+    def _on_preset_selected(self, name: str) -> None:
+        preset = self._preset_manager.apply_preset(name)
+        if not preset:
+            return
+        params = asdict(preset)
+        self._spatial_panel.set_params(params)
+        self._separation_panel.set_params(params)
+        self._enhancer_panel.set_params(params)
+        self._depth_panel.set_params(params)
+        # Push to backend
+        self._on_spatial_changed(self._spatial_panel.get_params())
+        self._on_separation_changed(self._separation_panel.get_params())
+        self._on_enhancer_changed(self._enhancer_panel.get_params())
+        self._on_depth_changed(self._depth_panel.get_params())
+        self.statusBar().showMessage(f"Preset loaded: {name}")
+
+    @pyqtSlot(str)
+    def _on_preset_save(self, name: str) -> None:
+        preset = EffectPreset(name=name)
+        sp = self._spatial_panel.get_params()
+        preset.spatial_enabled = sp.get("enabled", True)
+        preset.soundstage_width = sp.get("soundstage_width", 0.7)
+        preset.depth = sp.get("depth", 0.5)
+        preset.height = sp.get("height", 0.3)
+        preset.holographic_intensity = sp.get("holographic_intensity", 0.6)
+        preset.crossfeed_level = sp.get("crossfeed_level", 0.3)
+        preset.center_focus = sp.get("center_focus", 0.5)
+        preset.stereo_enhance = sp.get("stereo_enhance", 0.4)
+        preset.immersion = sp.get("immersion", 0.5)
+        preset.diffusion = sp.get("diffusion", 0.3)
+        sep = self._separation_panel.get_params()
+        preset.separation_enabled = sep.get("enabled", True)
+        preset.vocal_boost = sep.get("vocal_boost", 0.3)
+        preset.instrument_clarity = sep.get("instrument_clarity", 0.5)
+        preset.bass_enhance = sep.get("bass_enhance", 0.2)
+        preset.drum_punch = sep.get("drum_punch", 0.2)
+        preset.wiener_iterations = int(sep.get("wiener_iterations", 3))
+        enh = self._enhancer_panel.get_params()
+        preset.enhancer_enabled = enh.get("enabled", True)
+        preset.warmth = enh.get("warmth", 0.3)
+        preset.clarity = enh.get("clarity", 0.5)
+        preset.presence = enh.get("presence", 0.4)
+        preset.air = enh.get("air", 0.3)
+        preset.bass_boost = enh.get("bass_boost", 0.2)
+        preset.exciter = enh.get("exciter", 0.2)
+        preset.transient_shape = enh.get("transient_shape", 0.0)
+        preset.psychoacoustic_bass = enh.get("psychoacoustic_bass", 0.3)
+        preset.multiband_compression = enh.get("multiband_compression", 0.3)
+        preset.stereo_width = enh.get("stereo_width", 0.0)
+        preset.loudness_target = enh.get("loudness_target", -14.0)
+        dep = self._depth_panel.get_params()
+        preset.depth_enabled = dep.get("enabled", True)
+        preset.depth_amount = dep.get("depth_amount", 0.5)
+        preset.room_size = dep.get("room_size", 0.4)
+        preset.damping = dep.get("damping", 0.5)
+        preset.damp_lo = dep.get("damp_lo", 0.3)
+        preset.depth_diffusion = dep.get("diffusion", 0.7)
+        preset.modulation_depth = dep.get("modulation_depth", 0.3)
+        preset.pre_delay_ms = dep.get("pre_delay_ms", 15.0)
+        preset.early_reflection_mix = dep.get("early_reflection_mix", 0.3)
+        preset.late_reverb_mix = dep.get("late_reverb_mix", 0.2)
+        self._preset_manager.save_preset(preset)
+        self._preset_selector.refresh()
+        self.statusBar().showMessage(f"Preset saved: {name}")
+
+    @pyqtSlot(str)
+    def _on_preset_delete(self, name: str) -> None:
+        if self._preset_manager.delete_preset(name):
+            self._preset_selector.refresh()
+            self.statusBar().showMessage(f"Preset deleted: {name}")
+
+    def _setup_shortcuts(self) -> None:
+        """Configure keyboard shortcuts."""
+        # Space - toggle play/stop
+        sc_play = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
+        sc_play.activated.connect(lambda: self._master_bar._play_btn.toggle())
+
+        # B - toggle bypass
+        sc_bypass = QShortcut(QKeySequence(Qt.Key.Key_B), self)
+        sc_bypass.activated.connect(lambda: self._master_bar._bypass_btn.toggle())
+
+        # Ctrl+S - save current as preset
+        sc_save = QShortcut(QKeySequence("Ctrl+S"), self)
+        sc_save.activated.connect(lambda: self._preset_selector._on_save_clicked())
+
+        # 1-4 - switch effect tabs
+        for i in range(4):
+            sc = QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self)
+            sc.activated.connect(lambda idx=i: self._tabs.setCurrentIndex(idx))
+
+        # Ctrl+Up / Ctrl+Down - volume adjust
+        sc_vol_up = QShortcut(QKeySequence("Ctrl+Up"), self)
+        sc_vol_up.activated.connect(
+            lambda: setattr(
+                self._master_bar._volume,
+                "value",
+                min(2.0, self._master_bar._volume.value + 0.05),
+            ),
+        )
+        sc_vol_down = QShortcut(QKeySequence("Ctrl+Down"), self)
+        sc_vol_down.activated.connect(
+            lambda: setattr(
+                self._master_bar._volume,
+                "value",
+                max(0.0, self._master_bar._volume.value - 0.05),
+            ),
+        )
 
     def _update_visualizations(self) -> None:
         """Update audio visualizations from processing data."""
@@ -461,9 +582,9 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About NPU Audio Enhancer",
-            "<h2>NPU Audio Enhancer v3.0</h2>"
+            "<h2>NPU Audio Enhancer v3.1.0</h2>"
             "<p>ARM64 Snapdragon X Elite NPU-accelerated real-time audio enhancement</p>"
-            "<p>Dramatically improved features:</p>"
+            "<p><b>Features:</b></p>"
             "<ul>"
             "<li>Phase-aware source separation with Wiener filtering & HPSS</li>"
             "<li>512-tap HRTF with pinna notch & concha resonance modeling</li>"
@@ -472,8 +593,11 @@ class MainWindow(QMainWindow):
             "<li>Tape saturation harmonic exciter with transient shaping</li>"
             "<li>SABAJ A20D ES9038PRO DAC with triple-buffer NPU streaming</li>"
             "<li>Adam-optimized deep learning recommendations</li>"
+            "<li>8 built-in presets with user-defined preset management</li>"
             "<li>Spotify / Apple Music / YouTube Music support</li>"
             "</ul>"
+            "<p><b>Shortcuts:</b> Space=Play/Stop, B=Bypass, "
+            "Ctrl+S=Save Preset, Ctrl+1-4=Tabs, Ctrl+Up/Down=Volume</p>"
             "<p>Powered by ONNX Runtime + DirectML on Snapdragon X NPU</p>",
         )
 
