@@ -72,6 +72,10 @@ class MainWindow(QMainWindow):
         self._mm_debounce_timer.setSingleShot(True)
         self._mm_debounce_timer.setInterval(350)
         self._mm_debounce_timer.timeout.connect(self._flush_mm_resync)
+        self._rate_defer_timer = QTimer(self)
+        self._rate_defer_timer.setSingleShot(True)
+        self._rate_defer_timer.setInterval(150)
+        self._rate_defer_timer.timeout.connect(self._update_pipeline_rate_labels)
         self._start_mm_notification()
 
     def _start_mm_notification(self) -> None:
@@ -389,6 +393,11 @@ class MainWindow(QMainWindow):
         self._recommender_panel.track_liked.connect(self._on_track_liked)
         self._recommender_panel.track_skipped.connect(self._on_track_skipped)
 
+    def _schedule_deferred_rate_refresh(self) -> None:
+        """Re-run rate labels after WASAPI mix rate is set (single-shot, cancellable)."""
+        self._rate_defer_timer.stop()
+        self._rate_defer_timer.start()
+
     @pyqtSlot(bool)
     def _on_play_toggled(self, playing: bool) -> None:
         if self._app:
@@ -398,8 +407,9 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage("Audio processing active")
                 self._dac_panel.set_loopback_resync_enabled(True)
                 self._update_pipeline_rate_labels()
-                QTimer.singleShot(150, self._update_pipeline_rate_labels)
+                self._schedule_deferred_rate_refresh()
             else:
+                self._rate_defer_timer.stop()
                 self._app.stop_processing()
                 self._master_bar.set_status("Stopped")
                 self.statusBar().showMessage("Audio processing stopped")
@@ -627,6 +637,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self._mm_debounce_timer.stop()
+        self._rate_defer_timer.stop()
         self._mm_pending_reasons.clear()
         if self._mm_notify is not None:
             self._mm_notify.close()
