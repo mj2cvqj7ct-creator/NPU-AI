@@ -24,6 +24,7 @@ def default_model_dir() -> str:
         return os.path.join(os.path.dirname(sys.executable), "models")
     return str(Path(__file__).resolve().parents[2] / "models")
 
+
 class _ModelRegistryEntry(TypedDict):
     description: str
     input_shape: list[int]
