@@ -397,11 +397,14 @@ class MainWindow(QMainWindow):
                 self._master_bar.set_status("Processing...")
                 self.statusBar().showMessage("Audio processing active")
                 self._dac_panel.set_loopback_resync_enabled(True)
+                self._update_pipeline_rate_labels()
+                QTimer.singleShot(150, self._update_pipeline_rate_labels)
             else:
                 self._app.stop_processing()
                 self._master_bar.set_status("Stopped")
                 self.statusBar().showMessage("Audio processing stopped")
                 self._dac_panel.set_loopback_resync_enabled(False)
+                self._update_pipeline_rate_labels()
 
     @pyqtSlot()
     def _on_resync_loopback(self) -> None:
@@ -508,6 +511,7 @@ class MainWindow(QMainWindow):
                 "Default playback device or format changed — capture resynced",
                 4000,
             )
+            self._update_pipeline_rate_labels()
 
     def _update_stats(self) -> None:
         """Update processing statistics display."""
