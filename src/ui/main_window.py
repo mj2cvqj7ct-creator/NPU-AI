@@ -282,6 +282,10 @@ class MainWindow(QMainWindow):
         self._stats_timer.timeout.connect(self._update_stats)
         self._stats_timer.start(500)
 
+        self._endpoint_timer = QTimer(self)
+        self._endpoint_timer.timeout.connect(self._check_render_endpoint)
+        self._endpoint_timer.start(1500)
+
     def _connect_signals(self) -> None:
         """Connect UI signals to application controller."""
         if not self._app:
@@ -391,6 +395,15 @@ class MainWindow(QMainWindow):
                 self._waveform.update_waveform(viz_data["waveform"])
             if viz_data.get("stem_levels"):
                 self._stem_meters.update_levels(viz_data["stem_levels"])
+
+    def _check_render_endpoint(self) -> None:
+        if not self._app or not self._master_bar.is_playing:
+            return
+        if self._app.sync_render_endpoint_if_changed():
+            self.statusBar().showMessage(
+                "Default playback device or format changed — capture resynced",
+                4000,
+            )
 
     def _update_stats(self) -> None:
         """Update processing statistics display."""

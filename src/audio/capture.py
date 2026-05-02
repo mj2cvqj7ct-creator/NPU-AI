@@ -19,8 +19,11 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def probe_default_render_mix_sample_rate() -> int | None:
-    """Read the mix-format sample rate of the default playback device (Windows)."""
+def probe_default_render_endpoint_state() -> tuple[str, int, int, int] | None:
+    """Default playback device id + mix format (Windows). Returns None if unavailable.
+
+    Tuple: (device_id, sample_rate_hz, channels, bits_per_sample)
+    """
     try:
         import comtypes
         from pycaw.pycaw import IAudioClient, IMMDeviceEnumerator
@@ -32,14 +35,35 @@ def probe_default_render_mix_sample_rate() -> int | None:
             comtypes.CLSCTX_ALL,
         )
         device = enumerator.GetDefaultAudioEndpoint(0, 1)
+        try:
+            raw_id = device.GetId()
+            dev_id = str(raw_id) if raw_id is not None else ""
+        except Exception:
+            dev_id = ""
         client = device.Activate(IAudioClient._iid_, comtypes.CLSCTX_ALL, None)
         mix = client.GetMixFormat()
         rate = int(mix.contents.nSamplesPerSec)
-        logger.info("Default render mix sample rate: %d Hz", rate)
-        return rate
+        ch = int(mix.contents.nChannels)
+        bits = int(getattr(mix.contents, "wBitsPerSample", 32))
+        logger.debug(
+            "Default render endpoint: id=%s, mix=%d Hz, %d ch, %d-bit",
+            dev_id[:48] if dev_id else "(none)",
+            rate,
+            ch,
+            bits,
+        )
+        return (dev_id, rate, ch, bits)
     except Exception as e:
-        logger.debug("Could not probe mix sample rate: %s", e)
+        logger.debug("Could not probe default render endpoint: %s", e)
         return None
+
+
+def probe_default_render_mix_sample_rate() -> int | None:
+    """Read the mix-format sample rate of the default playback device (Windows)."""
+    st = probe_default_render_endpoint_state()
+    if st:
+        logger.info("Default render mix sample rate: %d Hz", st[1])
+    return st[1] if st else None
 
 
 class CaptureMode(Enum):
@@ -239,7 +263,7 @@ class WASAPICapture:
             client.Start()
             logger.info("WASAPI loopback capture started via COM")
 
-            channels = mix_format.contents.nChannels
+            channels = int(mix_format.contents.nChannels)
 
             while self._is_capturing:
                 try:
