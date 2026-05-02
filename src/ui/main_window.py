@@ -1,8 +1,9 @@
 """
-Main Application Window.
+Main Application Window (v3 - Modern & Refined).
 
-Assembles all UI components into a modern, tabbed layout with
-real-time visualizations and comprehensive audio control panels.
+Premium dark-themed interface with glassmorphism styling,
+real-time spectral visualizations, and comprehensive
+audio processing controls.
 """
 
 from __future__ import annotations
@@ -53,9 +54,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._app = app_controller
 
-        self.setWindowTitle("NPU Audio Enhancer - Snapdragon X")
+        self.setWindowTitle("NPU Audio Enhancer - Snapdragon X Elite")
         self.setMinimumSize(1200, 800)
-        self.resize(1400, 900)
+        self.resize(1500, 950)
 
         self.setStyleSheet(DARK_THEME)
         self._setup_ui()
@@ -90,26 +91,36 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(splitter, 1)
 
     def _create_header(self) -> QWidget:
-        """Create the application header."""
+        """Create the application header with branding."""
         header = QWidget()
         layout = QHBoxLayout(header)
-        layout.setContentsMargins(16, 8, 16, 8)
+        layout.setContentsMargins(20, 10, 20, 10)
 
         title = QLabel("NPU Audio Enhancer")
-        title_font = QFont("Segoe UI", 20, QFont.Weight.Bold)
+        title.setObjectName("headerTitle")
+        title_font = QFont("Segoe UI", 22, QFont.Weight.Bold)
         title.setFont(title_font)
-        title.setStyleSheet("color: #6C5CE7; letter-spacing: 1px;")
+        title.setStyleSheet("color: #A29BFE; letter-spacing: 1.5px;")
 
-        subtitle = QLabel("Snapdragon X NPU  |  Real-time AI Audio Processing")
+        subtitle = QLabel(
+            "Snapdragon X Elite NPU  |  Real-time AI Processing  |  "
+            "Spotify / Apple Music / YouTube Music"
+        )
         subtitle.setObjectName("statusLabel")
 
         npu_status = QLabel("NPU: Initializing...")
-        npu_status.setObjectName("valueLabel")
+        npu_status.setObjectName("npuBadge")
         self._npu_status_label = npu_status
+
+        dac_badge = QLabel("DAC: Detecting...")
+        dac_badge.setObjectName("statusLabel")
+        self._dac_badge = dac_badge
 
         layout.addWidget(title)
         layout.addWidget(subtitle)
         layout.addStretch()
+        layout.addWidget(dac_badge)
+        layout.addSpacing(10)
         layout.addWidget(npu_status)
 
         return header
@@ -118,16 +129,18 @@ class MainWindow(QMainWindow):
         """Create the left panel with audio visualizations."""
         panel = QWidget()
         layout = QVBoxLayout(panel)
-        layout.setSpacing(8)
+        layout.setSpacing(10)
 
         viz_label = QLabel("Audio Analysis")
         viz_label.setObjectName("sectionTitle")
         layout.addWidget(viz_label)
 
         self._spectrum = SpectrumVisualizer()
+        self._spectrum.setMinimumHeight(200)
         layout.addWidget(self._spectrum)
 
         self._waveform = WaveformVisualizer()
+        self._waveform.setMinimumHeight(120)
         layout.addWidget(self._waveform)
 
         stems_label = QLabel("Source Separation")
@@ -138,15 +151,19 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._stem_meters)
 
         stats_row = QHBoxLayout()
+        stats_row.setSpacing(16)
         self._latency_label = QLabel("Latency: -- ms")
         self._latency_label.setObjectName("valueLabel")
         self._cpu_label = QLabel("CPU: --%")
         self._cpu_label.setObjectName("valueLabel")
         self._buffer_label = QLabel("Buffer: OK")
         self._buffer_label.setObjectName("valueLabel")
+        self._npu_load_label = QLabel("NPU: --")
+        self._npu_load_label.setObjectName("valueLabel")
         stats_row.addWidget(self._latency_label)
         stats_row.addWidget(self._cpu_label)
         stats_row.addWidget(self._buffer_label)
+        stats_row.addWidget(self._npu_load_label)
         layout.addLayout(stats_row)
 
         layout.addStretch()
@@ -164,7 +181,7 @@ class MainWindow(QMainWindow):
         tabs.addTab(effects_tab, "Effects")
 
         dac_tab = self._create_dac_tab()
-        tabs.addTab(dac_tab, "DAC")
+        tabs.addTab(dac_tab, "SABAJ DAC")
 
         rec_tab = self._create_recommender_tab()
         tabs.addTab(rec_tab, "AI Recommend")
@@ -395,16 +412,36 @@ class MainWindow(QMainWindow):
         provider = npu_info.get("provider", "N/A")
         if npu_info.get("is_npu"):
             self._npu_status_label.setText(f"NPU: Active ({provider})")
-            self._npu_status_label.setStyleSheet("color: #00B894;")
+            self._npu_status_label.setStyleSheet(
+                "color: #00B894; border-color: #00B894;"
+            )
         elif provider != "None":
             self._npu_status_label.setText(f"NPU: {provider}")
-            self._npu_status_label.setStyleSheet("color: #FDCB6E;")
+            self._npu_status_label.setStyleSheet(
+                "color: #FDCB6E; border-color: #FDCB6E;"
+            )
         else:
             self._npu_status_label.setText("NPU: DSP Mode")
-            self._npu_status_label.setStyleSheet("color: #8B949E;")
+            self._npu_status_label.setStyleSheet(
+                "color: #8B949E; border-color: #8B949E;"
+            )
+
+        # NPU processing time
+        npu_ms = npu_info.get("avg_inference_ms", 0)
+        self._npu_load_label.setText(f"NPU: {npu_ms:.1f}ms")
 
         dac_status = self._app.dac_controller.get_status_info()
         self._dac_panel.update_status(dac_status)
+
+        # DAC badge
+        dac_name = dac_status.get("device_name", "N/A")
+        dac_st = dac_status.get("status", "disconnected")
+        if dac_st in ("connected", "streaming"):
+            self._dac_badge.setText(f"DAC: {dac_name}")
+            self._dac_badge.setStyleSheet("color: #00B894;")
+        else:
+            self._dac_badge.setText("DAC: Not Connected")
+            self._dac_badge.setStyleSheet("color: #8B949E;")
 
         profile = self._app.recommender.preference_profile
         self._recommender_panel.update_preferences(profile)
@@ -423,26 +460,33 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About NPU Audio Enhancer",
-            "<h2>NPU Audio Enhancer v1.0</h2>"
-            "<p>ARM64 Snapdragon X NPU-accelerated real-time audio enhancement</p>"
-            "<p>Features:</p>"
+            "<h2>NPU Audio Enhancer v3.0</h2>"
+            "<p>ARM64 Snapdragon X Elite NPU-accelerated real-time audio enhancement</p>"
+            "<p>Dramatically improved features:</p>"
             "<ul>"
-            "<li>WASAPI Loopback audio capture</li>"
-            "<li>AI source separation (Vocals/Drums/Bass/Other)</li>"
-            "<li>Spatial audio & holographic soundstage</li>"
-            "<li>SABAJ A20D XMOS USB DAC integration</li>"
-            "<li>Deep learning music recommendations</li>"
+            "<li>Phase-aware source separation with Wiener filtering & HPSS</li>"
+            "<li>512-tap HRTF with pinna notch & concha resonance modeling</li>"
+            "<li>6-band holographic soundstage with allpass diffusion</li>"
+            "<li>12-line FDN reverb with modulated delay lines</li>"
+            "<li>Tape saturation harmonic exciter with transient shaping</li>"
+            "<li>SABAJ A20D ES9038PRO DAC with triple-buffer NPU streaming</li>"
+            "<li>Adam-optimized deep learning recommendations</li>"
+            "<li>Spotify / Apple Music / YouTube Music support</li>"
             "</ul>"
-            "<p>Powered by ONNX Runtime + DirectML</p>",
+            "<p>Powered by ONNX Runtime + DirectML on Snapdragon X NPU</p>",
         )
 
     def update_npu_status(self, info: dict) -> None:
         """Update NPU status display from app controller."""
         if info.get("is_npu"):
             self._npu_status_label.setText("NPU: Active")
-            self._npu_status_label.setStyleSheet("color: #00B894;")
+            self._npu_status_label.setStyleSheet(
+                "color: #00B894; border-color: #00B894;"
+            )
         else:
-            self._npu_status_label.setText(f"NPU: {info.get('provider', 'N/A')}")
+            self._npu_status_label.setText(
+                f"NPU: {info.get('provider', 'N/A')}"
+            )
 
     def closeEvent(self, event) -> None:
         if self._app:
