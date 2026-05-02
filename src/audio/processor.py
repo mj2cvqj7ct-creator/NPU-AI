@@ -149,9 +149,10 @@ class AudioProcessor:
         if audio.ndim == 1:
             audio = np.column_stack([audio, audio])
 
-        dry = audio.copy() if self._ab_mode else None
-
         audio = self._normalize_input(audio)
+
+        # Capture dry after normalization so it shares the same safety baseline
+        dry = audio.copy() if self._ab_mode else None
 
         if self.config.enable_separation:
             audio = self._separator.process(audio)
@@ -169,6 +170,10 @@ class AudioProcessor:
         audio = self._limit_output(audio)
 
         if self._ab_mode and dry is not None:
+            # Apply same master gain and limiter to dry path
+            dry = dry * self._master_gain
+            dry = self._limit_output(dry)
+
             target = 1.0 if self._ab_showing_dry else 0.0
             if abs(self._ab_position - target) > 1e-4:
                 if self._ab_position < target:
