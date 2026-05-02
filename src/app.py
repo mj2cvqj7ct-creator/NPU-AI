@@ -246,8 +246,8 @@ class AudioEnhancerApp:
         return self._output.stats
 
     def pipeline_rate_info(self) -> dict[str, int | bool]:
-        """Loopback vs DAC output sample rates for UI (live effective capture rate)."""
-        loop_hz = self._capture.effective_sample_rate
+        """Loopback vs DAC output sample rates for UI."""
+        loop_hz = self._capture.loopback_rate_for_display()
         out_hz = self._dac_controller.config.sample_rate.value
         return {
             "loopback_hz": loop_hz,

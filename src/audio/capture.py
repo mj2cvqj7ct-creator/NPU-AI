@@ -66,6 +66,12 @@ def probe_default_render_mix_sample_rate() -> int | None:
     return st[1] if st else None
 
 
+def peek_default_render_mix_hz() -> int | None:
+    """Same as probe mix rate but without INFO log (safe for UI timers)."""
+    st = probe_default_render_endpoint_state()
+    return st[1] if st else None
+
+
 class CaptureMode(Enum):
     SHARED = "shared"
     EXCLUSIVE = "exclusive"
@@ -208,6 +214,15 @@ class WASAPICapture:
         if self._actual_sample_rate is not None:
             return self._actual_sample_rate
         return self.config.format.sample_rate
+
+    def loopback_rate_for_display(self) -> int:
+        """Loopback / Windows mix rate for UI (probed when capture not running)."""
+        if self._is_capturing:
+            return self.effective_sample_rate
+        p = peek_default_render_mix_hz()
+        if p is not None:
+            return p
+        return int(self.config.format.sample_rate)
 
     def stop(self) -> None:
         self._is_capturing = False

@@ -87,6 +87,15 @@ class DACControlPanel(QGroupBox):
         status_row.addWidget(self._chip_label)
         layout.addLayout(status_row)
 
+        self._pipeline_rates_label = QLabel("Pipeline: loopback — → out —")
+        self._pipeline_rates_label.setObjectName("statusLabel")
+        self._pipeline_rates_label.setWordWrap(True)
+        self._pipeline_rates_label.setToolTip(
+            "Windows default playback mix (loopback) vs DAC output sample rate. "
+            "Resample: polyphase in the processing path.",
+        )
+        layout.addWidget(self._pipeline_rates_label)
+
         # Sample rate + bit depth
         config_row = QHBoxLayout()
 
@@ -209,6 +218,21 @@ class DACControlPanel(QGroupBox):
 
     def set_loopback_resync_enabled(self, enabled: bool) -> None:
         self._resync_loopback_btn.setEnabled(enabled)
+
+    def update_pipeline_rates(self, info: dict[str, int | bool]) -> None:
+        """Show loopback vs output rates from AudioEnhancerApp.pipeline_rate_info()."""
+        lb = int(info["loopback_hz"])
+        out = int(info["output_hz"])
+        if info["resampling"]:
+            self._pipeline_rates_label.setText(
+                f"Pipeline: loopback {lb} Hz → out {out} Hz (resample)",
+            )
+            self._pipeline_rates_label.setStyleSheet("color: #FDCB6E;")
+        else:
+            self._pipeline_rates_label.setText(
+                f"Pipeline: loopback {lb} Hz — matched to out {out} Hz",
+            )
+            self._pipeline_rates_label.setStyleSheet("color: #55EFC4;")
 
     def _emit_config(self) -> None:
         self.config_changed.emit(self.get_config())
