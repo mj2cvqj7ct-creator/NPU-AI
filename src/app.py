@@ -226,6 +226,13 @@ class AudioEnhancerApp:
     def _resample_audio(
         audio: np.ndarray, src_sr: int, dst_sr: int,
     ) -> np.ndarray:
+        if src_sr <= 0 or dst_sr <= 0:
+            logger.warning(
+                "Skipping resample: invalid sample rates src=%s dst=%s",
+                src_sr,
+                dst_sr,
+            )
+            return audio.astype(np.float32, copy=False)
         if src_sr == dst_sr or audio.shape[0] == 0:
             return audio
         if audio.ndim == 1:

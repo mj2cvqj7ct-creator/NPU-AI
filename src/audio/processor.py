@@ -114,7 +114,11 @@ class AudioProcessor:
         v = bool(value)
         if v != self._bypass:
             if v:
+                # Next bypass frame resets streaming state. Also arm DSP flush so a
+                # rapid bypass-off (before any bypass audio) still clears tails on
+                # the next DSP frame.
                 self._flush_pipeline_on_next_bypass_frame = True
+                self._flush_pipeline_on_next_dsp_frame = True
             else:
                 self._flush_pipeline_on_next_dsp_frame = True
         self._bypass = v
@@ -179,6 +183,9 @@ class AudioProcessor:
             if self._flush_pipeline_on_next_bypass_frame:
                 self._reset_all_streaming_state()
                 self._flush_pipeline_on_next_bypass_frame = False
+                # Same full reset as DSP flush; drop pending DSP flush to avoid double
+                # reset on the next process() when leaving bypass.
+                self._flush_pipeline_on_next_dsp_frame = False
             t_bypass = time.perf_counter()
             dry = audio
             if dry.ndim == 1:
@@ -190,6 +197,9 @@ class AudioProcessor:
         if self._flush_pipeline_on_next_dsp_frame:
             self._reset_all_streaming_state()
             self._flush_pipeline_on_next_dsp_frame = False
+            # If bypass was toggled on/off without a bypass audio frame, clear the
+            # stale bypass-arm flag (same reset already ran above).
+            self._flush_pipeline_on_next_bypass_frame = False
 
         t0 = time.perf_counter()
 

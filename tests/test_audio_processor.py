@@ -81,10 +81,25 @@ class TestAudioProcessor(unittest.TestCase):
         p = self.AudioProcessor()
         p.bypass = True
         self.assertTrue(p._flush_pipeline_on_next_bypass_frame)
+        self.assertTrue(p._flush_pipeline_on_next_dsp_frame)
         p.process(np.ones((32, 2), dtype=np.float32))
         self.assertFalse(p._flush_pipeline_on_next_bypass_frame)
+        self.assertFalse(p._flush_pipeline_on_next_dsp_frame)
 
         p.bypass = False
         self.assertTrue(p._flush_pipeline_on_next_dsp_frame)
         p.process(np.ones((32, 2), dtype=np.float32))
         self.assertFalse(p._flush_pipeline_on_next_dsp_frame)
+
+    def test_bypass_off_without_bypass_frame_still_flushes_dsp(self) -> None:
+        """Rapid bypass on→off before any bypass process() must not skip DSP flush."""
+        p = self.AudioProcessor()
+        p.bypass = True
+        self.assertTrue(p._flush_pipeline_on_next_bypass_frame)
+        self.assertTrue(p._flush_pipeline_on_next_dsp_frame)
+        p.bypass = False
+        self.assertTrue(p._flush_pipeline_on_next_dsp_frame)
+        self.assertTrue(p._flush_pipeline_on_next_bypass_frame)
+        p.process(np.ones((16, 2), dtype=np.float32))
+        self.assertFalse(p._flush_pipeline_on_next_dsp_frame)
+        self.assertFalse(p._flush_pipeline_on_next_bypass_frame)
