@@ -123,7 +123,9 @@ class AudioEnhancer:
         audio = self._harmonic.process(audio)
 
         # 5. Multi-band compression
-        self._dynamics.threshold_db = -18.0 - self.multiband_compression * 6.0
+        comp_offset = self.multiband_compression * 6.0
+        for name, base in self._dynamics._base_thresholds.items():
+            self._dynamics._band_thresholds[name] = base - comp_offset
         self._dynamics.ratio = 3.0 + self.multiband_compression * 3.0
         audio = self._dynamics.process(audio)
 
@@ -340,7 +342,7 @@ class TransientShaper:
         attack_mod = 1.0 + transient * self.attack_gain * 10
         sustain_mod = 1.0 + sustain * self.sustain_gain * 2
 
-        gain = min(2.0, attack_mod * sustain_mod)
+        gain = np.clip(attack_mod * sustain_mod, 0.1, 2.0)
         return audio * gain
 
 
@@ -395,7 +397,7 @@ class MultibandCompressor:
         self._release = float(release_coeff)
 
         # Per-band threshold adjustments
-        self._band_thresholds = {
+        self._base_thresholds = {
             "sub_bass": -20.0,
             "low": -18.0,
             "low_mid": -16.0,
@@ -403,6 +405,7 @@ class MultibandCompressor:
             "presence": -20.0,
             "high": -22.0,
         }
+        self._band_thresholds = dict(self._base_thresholds)
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         output = np.zeros_like(audio, dtype=np.float64)
