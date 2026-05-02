@@ -33,6 +33,7 @@ class SpatialProcessor:
         self.center_focus = 0.5
         self.stereo_enhance = 0.4
         self.immersion = 0.5
+        self.diffusion = 0.3
 
         # Internal state
         self._hrtf_l: np.ndarray = np.zeros(0, dtype=np.float32)
@@ -54,7 +55,8 @@ class SpatialProcessor:
         self._allpass_coeffs: list[tuple[float, int]] = []
         self._allpass_buffers_l: list[np.ndarray] = []
         self._allpass_buffers_r: list[np.ndarray] = []
-        self._allpass_indices: list[int] = []
+        self._allpass_indices_l: list[int] = []
+        self._allpass_indices_r: list[int] = []
 
         # Mid-side processing state
         self._prev_mid_rms = 0.0
@@ -273,7 +275,7 @@ class SpatialProcessor:
             out_l, out_r = self._apply_crossfeed(out_l, out_r)
 
         # 8. Allpass diffuser for subtle spatial thickening
-        if self.holographic_intensity > 0.2:
+        if self.diffusion > 0.01:
             out_l = self._apply_allpass(out_l, is_left=True)
             out_r = self._apply_allpass(out_r, is_left=False)
 
@@ -383,7 +385,7 @@ class SpatialProcessor:
         """Schroeder allpass diffuser chain for spatial thickening."""
         buffers = self._allpass_buffers_l if is_left else self._allpass_buffers_r
         indices = self._allpass_indices_l if is_left else self._allpass_indices_r
-        intensity = self.holographic_intensity * 0.15
+        intensity = self.diffusion * 0.5
 
         out = data.copy()
         for i, (coeff, delay) in enumerate(self._allpass_coeffs):

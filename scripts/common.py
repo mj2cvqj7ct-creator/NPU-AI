@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 APP_NAME = "NPU Audio Enhancer"
-APP_VERSION = "1.0.0"
+APP_VERSION = "3.6.0"
 INSTALLER_FILENAME = f"NPU_Audio_Enhancer_Setup_{APP_VERSION}.exe"
 
 # Default output directory for built EXEs on target machine

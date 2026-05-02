@@ -26,6 +26,7 @@ a = Analysis(
         'scipy.signal',
         'scipy.fft',
         'scipy.spatial',
+        'scipy.spatial.distance',
         'sounddevice',
         'onnxruntime',
         'librosa',

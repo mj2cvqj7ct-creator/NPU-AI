@@ -78,7 +78,7 @@ echo ============================================
 echo  Installer built successfully!
 echo ============================================
 echo.
-echo Output: installer\output\NPU_Audio_Enhancer_Setup_1.0.0.exe
+echo Output: installer\output\NPU_Audio_Enhancer_Setup_3.6.0.exe
 echo.
 
 pause

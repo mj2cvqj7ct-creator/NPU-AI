@@ -29,6 +29,9 @@ class AudioEnhancer:
         self.exciter = 0.2
         self.stereo_width = 0.0
         self.loudness_target = -14.0  # LUFS
+        self.transient_shape = 0.0
+        self.psychoacoustic_bass = 0.3
+        self.multiband_compression = 0.3
 
         self._build_processing_chain()
 
@@ -104,19 +107,26 @@ class AudioEnhancer:
             return audio
 
         # 1. Psychoacoustic bass
-        if self.bass_boost > 0:
-            audio = self._bass_enhancer.process(audio, self.bass_boost)
+        bass_amount = self.bass_boost + self.psychoacoustic_bass * 0.5
+        if bass_amount > 0:
+            audio = self._bass_enhancer.process(audio, bass_amount)
 
         # 2. Multi-band EQ
         audio = self._apply_multiband_eq(audio)
 
         # 3. Transient shaping
+        self._transient_shaper.attack_gain = 0.15 + self.transient_shape * 0.35
+        self._transient_shaper.sustain_gain = max(0.0, -self.transient_shape * 0.2)
         audio = self._transient_shaper.process(audio)
 
         # 4. Harmonic exciter
         audio = self._harmonic.process(audio)
 
         # 5. Multi-band compression
+        comp_offset = self.multiband_compression * 6.0
+        for name, base in self._dynamics._base_thresholds.items():
+            self._dynamics._band_thresholds[name] = base - comp_offset
+        self._dynamics.ratio = 3.0 + self.multiband_compression * 3.0
         audio = self._dynamics.process(audio)
 
         # 6. Stereo width adjustment
@@ -332,7 +342,7 @@ class TransientShaper:
         attack_mod = 1.0 + transient * self.attack_gain * 10
         sustain_mod = 1.0 + sustain * self.sustain_gain * 2
 
-        gain = min(2.0, attack_mod * sustain_mod)
+        gain = np.clip(attack_mod * sustain_mod, 0.1, 2.0)
         return audio * gain
 
 
@@ -387,7 +397,7 @@ class MultibandCompressor:
         self._release = float(release_coeff)
 
         # Per-band threshold adjustments
-        self._band_thresholds = {
+        self._base_thresholds = {
             "sub_bass": -20.0,
             "low": -18.0,
             "low_mid": -16.0,
@@ -395,6 +405,7 @@ class MultibandCompressor:
             "presence": -20.0,
             "high": -22.0,
         }
+        self._band_thresholds = dict(self._base_thresholds)
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         output = np.zeros_like(audio, dtype=np.float64)

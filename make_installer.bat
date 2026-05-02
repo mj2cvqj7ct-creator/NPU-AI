@@ -117,7 +117,7 @@ cd ..
 
 :: Copy installer to desktop
 set "DESKTOP=%USERPROFILE%\Desktop"
-set "INSTALLER_FILE=NPU_Audio_Enhancer_Setup_1.0.0.exe"
+set "INSTALLER_FILE=NPU_Audio_Enhancer_Setup_3.6.0.exe"
 if exist "%DESKTOP%" (
     if exist "installer\output\%INSTALLER_FILE%" (
         copy /Y "installer\output\%INSTALLER_FILE%" "%DESKTOP%\%INSTALLER_FILE%" >nul 2>&1

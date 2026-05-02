@@ -1,8 +1,10 @@
 """
-Audio Effect Control Widgets.
+Audio Effect Control Widgets (v3.1 - Enhanced).
 
-Provides styled slider controls, toggle buttons, and parameter panels
-for all audio processing effects with modern layout and responsive design.
+Provides styled slider controls, toggle buttons, parameter panels,
+and a preset selector for all audio processing effects including
+transient shaping, psychoacoustic bass, multiband compression,
+LUFS normalization, allpass diffusion, and preset management.
 """
 
 from __future__ import annotations
@@ -10,14 +12,18 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QPushButton,
     QSlider,
     QVBoxLayout,
     QWidget,
 )
+
+from src.presets import PresetManager
 
 
 class EffectSlider(QWidget):
@@ -46,8 +52,8 @@ class EffectSlider(QWidget):
         layout.setSpacing(8)
 
         self._label = QLabel(label)
-        self._label.setMinimumWidth(100)
-        self._label.setMaximumWidth(130)
+        self._label.setMinimumWidth(110)
+        self._label.setMaximumWidth(140)
 
         self._slider = QSlider(Qt.Orientation.Horizontal)
         self._slider.setRange(0, 1000)
@@ -112,10 +118,12 @@ class SpatialControlPanel(QGroupBox):
         self._center = EffectSlider("Center Focus", 0, 1.0, 0.5)
         self._stereo = EffectSlider("Stereo Enhance", 0, 1.0, 0.4)
         self._immersion = EffectSlider("Immersion", 0, 1.0, 0.5)
+        self._diffusion = EffectSlider("Allpass Diffusion", 0, 1.0, 0.3)
 
         sliders = [
             self._width, self._depth, self._height, self._holographic,
             self._crossfeed, self._center, self._stereo, self._immersion,
+            self._diffusion,
         ]
         for slider in sliders:
             slider.value_changed.connect(lambda _: self._emit_params())
@@ -138,7 +146,20 @@ class SpatialControlPanel(QGroupBox):
             "center_focus": self._center.value,
             "stereo_enhance": self._stereo.value,
             "immersion": self._immersion.value,
+            "diffusion": self._diffusion.value,
         }
+
+    def set_params(self, params: dict) -> None:
+        self._enable.setChecked(params.get("spatial_enabled", True))
+        self._width.value = params.get("soundstage_width", 0.7)
+        self._depth.value = params.get("depth", 0.5)
+        self._height.value = params.get("height", 0.3)
+        self._holographic.value = params.get("holographic_intensity", 0.6)
+        self._crossfeed.value = params.get("crossfeed_level", 0.3)
+        self._center.value = params.get("center_focus", 0.5)
+        self._stereo.value = params.get("stereo_enhance", 0.4)
+        self._immersion.value = params.get("immersion", 0.5)
+        self._diffusion.value = params.get("diffusion", 0.3)
 
 
 class SeparationControlPanel(QGroupBox):
@@ -159,8 +180,12 @@ class SeparationControlPanel(QGroupBox):
         self._instrument = EffectSlider("Instrument Clarity", 0, 1.0, 0.5)
         self._bass = EffectSlider("Bass Enhance", 0, 1.0, 0.2)
         self._drums = EffectSlider("Drum Punch", 0, 1.0, 0.2)
+        self._wiener = EffectSlider("Wiener Iterations", 1, 5, 3, "", 0)
 
-        for slider in [self._vocal_boost, self._instrument, self._bass, self._drums]:
+        for slider in [
+            self._vocal_boost, self._instrument,
+            self._bass, self._drums, self._wiener,
+        ]:
             slider.value_changed.connect(lambda _: self._emit_params())
 
         layout.addWidget(self._enable)
@@ -168,6 +193,7 @@ class SeparationControlPanel(QGroupBox):
         layout.addWidget(self._instrument)
         layout.addWidget(self._bass)
         layout.addWidget(self._drums)
+        layout.addWidget(self._wiener)
 
     def _emit_params(self) -> None:
         self.params_changed.emit(self.get_params())
@@ -179,11 +205,20 @@ class SeparationControlPanel(QGroupBox):
             "instrument_clarity": self._instrument.value,
             "bass_enhance": self._bass.value,
             "drum_punch": self._drums.value,
+            "wiener_iterations": int(self._wiener.value),
         }
+
+    def set_params(self, params: dict) -> None:
+        self._enable.setChecked(params.get("separation_enabled", True))
+        self._vocal_boost.value = params.get("vocal_boost", 0.3)
+        self._instrument.value = params.get("instrument_clarity", 0.5)
+        self._bass.value = params.get("bass_enhance", 0.2)
+        self._drums.value = params.get("drum_punch", 0.2)
+        self._wiener.value = params.get("wiener_iterations", 3)
 
 
 class EnhancerControlPanel(QGroupBox):
-    """Control panel for audio quality enhancement."""
+    """Control panel for audio quality enhancement (v3)."""
 
     params_changed = pyqtSignal(dict)
 
@@ -202,11 +237,17 @@ class EnhancerControlPanel(QGroupBox):
         self._air = EffectSlider("Air", 0, 1.0, 0.3)
         self._bass_boost = EffectSlider("Bass Boost", 0, 1.0, 0.2)
         self._exciter = EffectSlider("Harmonic Exciter", 0, 1.0, 0.2)
+        self._transient = EffectSlider("Transient Shape", -1.0, 1.0, 0.0)
+        self._psych_bass = EffectSlider("Psycho Bass", 0, 1.0, 0.3)
+        self._compression = EffectSlider("Multiband Comp", 0, 1.0, 0.3)
         self._stereo_width = EffectSlider("Stereo Width", -0.5, 1.0, 0.0)
+        self._lufs_target = EffectSlider("LUFS Target", -24, -6, -14, " LUFS", 0)
 
         sliders = [
             self._warmth, self._clarity, self._presence, self._air,
-            self._bass_boost, self._exciter, self._stereo_width,
+            self._bass_boost, self._exciter, self._transient,
+            self._psych_bass, self._compression, self._stereo_width,
+            self._lufs_target,
         ]
         for slider in sliders:
             slider.value_changed.connect(lambda _: self._emit_params())
@@ -227,12 +268,30 @@ class EnhancerControlPanel(QGroupBox):
             "air": self._air.value,
             "bass_boost": self._bass_boost.value,
             "exciter": self._exciter.value,
+            "transient_shape": self._transient.value,
+            "psychoacoustic_bass": self._psych_bass.value,
+            "multiband_compression": self._compression.value,
             "stereo_width": self._stereo_width.value,
+            "loudness_target": self._lufs_target.value,
         }
+
+    def set_params(self, params: dict) -> None:
+        self._enable.setChecked(params.get("enhancer_enabled", True))
+        self._warmth.value = params.get("warmth", 0.3)
+        self._clarity.value = params.get("clarity", 0.5)
+        self._presence.value = params.get("presence", 0.4)
+        self._air.value = params.get("air", 0.3)
+        self._bass_boost.value = params.get("bass_boost", 0.2)
+        self._exciter.value = params.get("exciter", 0.2)
+        self._transient.value = params.get("transient_shape", 0.0)
+        self._psych_bass.value = params.get("psychoacoustic_bass", 0.3)
+        self._compression.value = params.get("multiband_compression", 0.3)
+        self._stereo_width.value = params.get("stereo_width", 0.0)
+        self._lufs_target.value = params.get("loudness_target", -14.0)
 
 
 class DepthControlPanel(QGroupBox):
-    """Control panel for depth and soundstage processing."""
+    """Control panel for depth and soundstage processing (v3)."""
 
     params_changed = pyqtSignal(dict)
 
@@ -247,14 +306,18 @@ class DepthControlPanel(QGroupBox):
 
         self._depth = EffectSlider("Depth Amount", 0, 1.0, 0.5)
         self._room = EffectSlider("Room Size", 0, 1.0, 0.4)
-        self._damping = EffectSlider("Damping", 0, 1.0, 0.5)
+        self._damping = EffectSlider("HF Damping", 0, 1.0, 0.5)
+        self._damp_lo = EffectSlider("LF Damping", 0, 1.0, 0.3)
         self._pre_delay = EffectSlider("Pre-delay", 0, 50.0, 15.0, " ms", 0)
         self._early_ref = EffectSlider("Early Reflections", 0, 1.0, 0.3)
         self._late_rev = EffectSlider("Late Reverb", 0, 1.0, 0.2)
+        self._diffusion = EffectSlider("Diffusion", 0, 1.0, 0.7)
+        self._modulation = EffectSlider("Mod Depth", 0, 1.0, 0.3)
 
         sliders = [
-            self._depth, self._room, self._damping,
+            self._depth, self._room, self._damping, self._damp_lo,
             self._pre_delay, self._early_ref, self._late_rev,
+            self._diffusion, self._modulation,
         ]
         for slider in sliders:
             slider.value_changed.connect(lambda _: self._emit_params())
@@ -272,10 +335,100 @@ class DepthControlPanel(QGroupBox):
             "depth_amount": self._depth.value,
             "room_size": self._room.value,
             "damping": self._damping.value,
+            "damp_lo": self._damp_lo.value,
             "pre_delay_ms": self._pre_delay.value,
             "early_reflection_mix": self._early_ref.value,
             "late_reverb_mix": self._late_rev.value,
+            "diffusion": self._diffusion.value,
+            "modulation_depth": self._modulation.value,
         }
+
+    def set_params(self, params: dict) -> None:
+        self._enable.setChecked(params.get("depth_enabled", True))
+        self._depth.value = params.get("depth_amount", 0.5)
+        self._room.value = params.get("room_size", 0.4)
+        self._damping.value = params.get("damping", 0.5)
+        self._damp_lo.value = params.get("damp_lo", 0.3)
+        self._pre_delay.value = params.get("pre_delay_ms", 15.0)
+        self._early_ref.value = params.get("early_reflection_mix", 0.3)
+        self._late_rev.value = params.get("late_reverb_mix", 0.2)
+        self._diffusion.value = params.get("depth_diffusion", 0.7)
+        self._modulation.value = params.get("modulation_depth", 0.3)
+
+
+class PresetSelector(QWidget):
+    """Preset selector with save/load/delete controls."""
+
+    preset_selected = pyqtSignal(str)
+    save_requested = pyqtSignal(str)
+    delete_requested = pyqtSignal(str)
+
+    def __init__(self, preset_manager: PresetManager, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._manager = preset_manager
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 8, 4)
+
+        label = QLabel("Preset:")
+        label.setStyleSheet("color: #A29BFE; font-weight: bold;")
+
+        self._combo = QComboBox()
+        self._combo.setMinimumWidth(180)
+        self._refresh_list()
+        self._combo.currentTextChanged.connect(self._on_preset_selected)
+
+        self._save_btn = QPushButton("Save")
+        self._save_btn.setMaximumWidth(60)
+        self._save_btn.clicked.connect(self._on_save_clicked)
+
+        self._delete_btn = QPushButton("Delete")
+        self._delete_btn.setMaximumWidth(60)
+        self._delete_btn.clicked.connect(self._on_delete_clicked)
+
+        layout.addWidget(label)
+        layout.addWidget(self._combo, 1)
+        layout.addWidget(self._save_btn)
+        layout.addWidget(self._delete_btn)
+
+    def _refresh_list(self) -> None:
+        current = self._combo.currentText()
+        self._combo.blockSignals(True)
+        self._combo.clear()
+        self._combo.addItems(self._manager.all_preset_names)
+        idx = self._combo.findText(current)
+        if idx >= 0:
+            self._combo.setCurrentIndex(idx)
+        self._combo.blockSignals(False)
+
+    def _on_preset_selected(self, name: str) -> None:
+        if name:
+            self.preset_selected.emit(name)
+
+    def _on_save_clicked(self) -> None:
+        name, ok = QInputDialog.getText(
+            self, "Save Preset", "Preset name:", text=self._combo.currentText(),
+        )
+        if ok and name.strip():
+            self.save_requested.emit(name.strip())
+            self._refresh_list()
+            self._combo.setCurrentText(name.strip())
+
+    def _on_delete_clicked(self) -> None:
+        name = self._combo.currentText()
+        if name and not self._manager.is_builtin(name):
+            self.delete_requested.emit(name)
+            self._refresh_list()
+
+    def set_preset_name(self, name: str) -> None:
+        idx = self._combo.findText(name)
+        if idx >= 0:
+            self._combo.blockSignals(True)
+            self._combo.setCurrentIndex(idx)
+            self._combo.blockSignals(False)
+
+    def refresh(self) -> None:
+        self._refresh_list()
 
 
 class MasterControlBar(QWidget):
@@ -294,7 +447,7 @@ class MasterControlBar(QWidget):
         self._play_btn = QPushButton("Start")
         self._play_btn.setObjectName("primaryButton")
         self._play_btn.setCheckable(True)
-        self._play_btn.setMinimumWidth(100)
+        self._play_btn.setMinimumWidth(120)
         self._play_btn.toggled.connect(self._on_play_toggled)
 
         self._bypass_btn = QPushButton("Bypass")

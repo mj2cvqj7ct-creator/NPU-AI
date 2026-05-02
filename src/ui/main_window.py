@@ -9,10 +9,11 @@ audio processing controls.
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot
-from PyQt6.QtGui import QAction, QFont
+from PyQt6.QtGui import QAction, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -25,16 +26,29 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.presets import EffectPreset, PresetManager
+from src.settings import SettingsManager
 from src.ui.styles import DARK_THEME
+from src.ui.tray import SystemTrayManager
+from src.ui.widgets.chain_editor import EffectChainEditor
+from src.ui.widgets.clip_indicator import ClipIndicator
 from src.ui.widgets.controls import (
     DepthControlPanel,
     EnhancerControlPanel,
     MasterControlBar,
+    PresetSelector,
     SeparationControlPanel,
     SpatialControlPanel,
 )
 from src.ui.widgets.dac_panel import DACControlPanel
+from src.ui.widgets.device_selector import DeviceSelector
+from src.ui.widgets.eq_visualizer import EQVisualizer
+from src.ui.widgets.log_viewer import DebugPanel
+from src.ui.widgets.perf_monitor import PerfMonitor
+from src.ui.widgets.player_bar import PlayerControlBar
 from src.ui.widgets.recommender_panel import RecommenderPanel
+from src.ui.widgets.spectrogram import SpectrogramWidget
+from src.ui.widgets.stats_panel import AudioStatsPanel
 from src.ui.widgets.visualizer import (
     SpectrumVisualizer,
     StemLevelMeters,
@@ -53,6 +67,8 @@ class MainWindow(QMainWindow):
     def __init__(self, app_controller: AudioEnhancerApp | None = None):
         super().__init__()
         self._app = app_controller
+        self._preset_manager = PresetManager()
+        self._settings_mgr = SettingsManager()
 
         self.setWindowTitle("NPU Audio Enhancer - Snapdragon X Elite")
         self.setMinimumSize(1200, 800)
@@ -64,6 +80,9 @@ class MainWindow(QMainWindow):
         self._setup_status_bar()
         self._setup_timers()
         self._connect_signals()
+        self._setup_shortcuts()
+        self._restore_settings()
+        self._tray = SystemTrayManager(self)
 
     def _setup_ui(self) -> None:
         """Build the main UI layout."""
@@ -78,6 +97,9 @@ class MainWindow(QMainWindow):
 
         self._master_bar = MasterControlBar()
         main_layout.addWidget(self._master_bar)
+
+        self._preset_selector = PresetSelector(self._preset_manager)
+        main_layout.addWidget(self._preset_selector)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
@@ -143,12 +165,34 @@ class MainWindow(QMainWindow):
         self._waveform.setMinimumHeight(120)
         layout.addWidget(self._waveform)
 
+        eq_label = QLabel("Parametric EQ Response")
+        eq_label.setObjectName("sectionTitle")
+        layout.addWidget(eq_label)
+
+        self._eq_viz = EQVisualizer()
+        self._eq_viz.setMinimumHeight(140)
+        layout.addWidget(self._eq_viz)
+
+        spec_label = QLabel("Spectrogram")
+        spec_label.setObjectName("sectionTitle")
+        layout.addWidget(spec_label)
+
+        self._spectrogram = SpectrogramWidget()
+        self._spectrogram.setMinimumHeight(100)
+        layout.addWidget(self._spectrogram)
+
         stems_label = QLabel("Source Separation")
         stems_label.setObjectName("sectionTitle")
         layout.addWidget(stems_label)
 
         self._stem_meters = StemLevelMeters()
         layout.addWidget(self._stem_meters)
+
+        self._player_bar = PlayerControlBar()
+        layout.addWidget(self._player_bar)
+
+        self._clip_indicator = ClipIndicator()
+        layout.addWidget(self._clip_indicator)
 
         stats_row = QHBoxLayout()
         stats_row.setSpacing(16)
@@ -186,6 +230,15 @@ class MainWindow(QMainWindow):
         rec_tab = self._create_recommender_tab()
         tabs.addTab(rec_tab, "AI Recommend")
 
+        stats_tab = self._create_stats_tab()
+        tabs.addTab(stats_tab, "Stats")
+
+        perf_tab = self._create_perf_tab()
+        tabs.addTab(perf_tab, "Perf")
+
+        debug_tab = self._create_debug_tab()
+        tabs.addTab(debug_tab, "Debug")
+
         layout.addWidget(tabs)
         return panel
 
@@ -198,6 +251,9 @@ class MainWindow(QMainWindow):
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setSpacing(12)
+
+        self._chain_editor = EffectChainEditor()
+        layout.addWidget(self._chain_editor)
 
         self._spatial_panel = SpatialControlPanel()
         self._separation_panel = SeparationControlPanel()
@@ -224,6 +280,9 @@ class MainWindow(QMainWindow):
 
         self._dac_panel = DACControlPanel()
         layout.addWidget(self._dac_panel)
+
+        self._device_selector = DeviceSelector()
+        layout.addWidget(self._device_selector)
         layout.addStretch()
 
         scroll.setWidget(content)
@@ -245,11 +304,49 @@ class MainWindow(QMainWindow):
         scroll.setWidget(content)
         return scroll
 
+    def _create_stats_tab(self) -> QWidget:
+        """Create the audio statistics tab."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
+
+        self._stats_panel = AudioStatsPanel()
+        layout.addWidget(self._stats_panel)
+
+        scroll.setWidget(content)
+        return scroll
+
+    def _create_perf_tab(self) -> QWidget:
+        """Create the performance monitor tab."""
+        self._perf_monitor = PerfMonitor()
+        return self._perf_monitor
+
+    def _create_debug_tab(self) -> QWidget:
+        """Create the debug/log viewer tab."""
+        self._debug_panel = DebugPanel()
+        return self._debug_panel
+
     def _setup_menu(self) -> None:
         """Setup application menu bar."""
         menu_bar = self.menuBar()
 
         file_menu = menu_bar.addMenu("File")
+
+        import_action = QAction("Import Audio File...", self)
+        import_action.setShortcut("Ctrl+O")
+        import_action.triggered.connect(self._on_import_audio)
+        file_menu.addAction(import_action)
+
+        export_action = QAction("Export Processed Audio...", self)
+        export_action.setShortcut("Ctrl+E")
+        export_action.triggered.connect(self._on_export_audio)
+        file_menu.addAction(export_action)
+
+        file_menu.addSeparator()
+
         exit_action = QAction("Exit", self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
@@ -262,6 +359,12 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self._always_on_top)
 
         help_menu = menu_bar.addMenu("Help")
+        tutorial_action = QAction("Tutorial / ガイド", self)
+        tutorial_action.setShortcut("F1")
+        tutorial_action.triggered.connect(self._show_tutorial)
+        help_menu.addAction(tutorial_action)
+
+        help_menu.addSeparator()
         about_action = QAction("About", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
@@ -302,6 +405,10 @@ class MainWindow(QMainWindow):
         self._recommender_panel.track_liked.connect(self._on_track_liked)
         self._recommender_panel.track_skipped.connect(self._on_track_skipped)
 
+        self._preset_selector.preset_selected.connect(self._on_preset_selected)
+        self._preset_selector.save_requested.connect(self._on_preset_save)
+        self._preset_selector.delete_requested.connect(self._on_preset_delete)
+
     @pyqtSlot(bool)
     def _on_play_toggled(self, playing: bool) -> None:
         if self._app:
@@ -340,6 +447,7 @@ class MainWindow(QMainWindow):
             sep.config.instrument_clarity = params.get("instrument_clarity", 0.5)
             sep.config.bass_enhance = params.get("bass_enhance", 0.2)
             sep.config.drum_punch = params.get("drum_punch", 0.2)
+            sep.config.wiener_iterations = int(params.get("wiener_iterations", 3))
 
     @pyqtSlot(dict)
     def _on_enhancer_changed(self, params: dict) -> None:
@@ -348,6 +456,14 @@ class MainWindow(QMainWindow):
                 k: v for k, v in params.items() if k != "enabled"
             })
             self._app.processor.enhancer.enabled = params.get("enabled", True)
+        # Update EQ visualizer
+        self._eq_viz.set_gains_from_enhancer(
+            warmth=params.get("warmth", 0.3),
+            clarity=params.get("clarity", 0.5),
+            presence=params.get("presence", 0.4),
+            air=params.get("air", 0.3),
+            bass_boost=params.get("bass_boost", 0.2),
+        )
 
     @pyqtSlot(dict)
     def _on_depth_changed(self, params: dict) -> None:
@@ -377,6 +493,174 @@ class MainWindow(QMainWindow):
     def _on_track_skipped(self) -> None:
         if self._app:
             self._app.on_track_skipped()
+
+    @pyqtSlot(str)
+    def _on_preset_selected(self, name: str) -> None:
+        preset = self._preset_manager.apply_preset(name)
+        if not preset:
+            return
+        params = asdict(preset)
+        self._spatial_panel.set_params(params)
+        self._separation_panel.set_params(params)
+        self._enhancer_panel.set_params(params)
+        self._depth_panel.set_params(params)
+        # Push to backend
+        self._on_spatial_changed(self._spatial_panel.get_params())
+        self._on_separation_changed(self._separation_panel.get_params())
+        self._on_enhancer_changed(self._enhancer_panel.get_params())
+        self._on_depth_changed(self._depth_panel.get_params())
+        self.statusBar().showMessage(f"Preset loaded: {name}")
+
+    @pyqtSlot(str)
+    def _on_preset_save(self, name: str) -> None:
+        preset = EffectPreset(name=name)
+        sp = self._spatial_panel.get_params()
+        preset.spatial_enabled = sp.get("enabled", True)
+        preset.soundstage_width = sp.get("soundstage_width", 0.7)
+        preset.depth = sp.get("depth", 0.5)
+        preset.height = sp.get("height", 0.3)
+        preset.holographic_intensity = sp.get("holographic_intensity", 0.6)
+        preset.crossfeed_level = sp.get("crossfeed_level", 0.3)
+        preset.center_focus = sp.get("center_focus", 0.5)
+        preset.stereo_enhance = sp.get("stereo_enhance", 0.4)
+        preset.immersion = sp.get("immersion", 0.5)
+        preset.diffusion = sp.get("diffusion", 0.3)
+        sep = self._separation_panel.get_params()
+        preset.separation_enabled = sep.get("enabled", True)
+        preset.vocal_boost = sep.get("vocal_boost", 0.3)
+        preset.instrument_clarity = sep.get("instrument_clarity", 0.5)
+        preset.bass_enhance = sep.get("bass_enhance", 0.2)
+        preset.drum_punch = sep.get("drum_punch", 0.2)
+        preset.wiener_iterations = int(sep.get("wiener_iterations", 3))
+        enh = self._enhancer_panel.get_params()
+        preset.enhancer_enabled = enh.get("enabled", True)
+        preset.warmth = enh.get("warmth", 0.3)
+        preset.clarity = enh.get("clarity", 0.5)
+        preset.presence = enh.get("presence", 0.4)
+        preset.air = enh.get("air", 0.3)
+        preset.bass_boost = enh.get("bass_boost", 0.2)
+        preset.exciter = enh.get("exciter", 0.2)
+        preset.transient_shape = enh.get("transient_shape", 0.0)
+        preset.psychoacoustic_bass = enh.get("psychoacoustic_bass", 0.3)
+        preset.multiband_compression = enh.get("multiband_compression", 0.3)
+        preset.stereo_width = enh.get("stereo_width", 0.0)
+        preset.loudness_target = enh.get("loudness_target", -14.0)
+        dep = self._depth_panel.get_params()
+        preset.depth_enabled = dep.get("enabled", True)
+        preset.depth_amount = dep.get("depth_amount", 0.5)
+        preset.room_size = dep.get("room_size", 0.4)
+        preset.damping = dep.get("damping", 0.5)
+        preset.damp_lo = dep.get("damp_lo", 0.3)
+        preset.depth_diffusion = dep.get("diffusion", 0.7)
+        preset.modulation_depth = dep.get("modulation_depth", 0.3)
+        preset.pre_delay_ms = dep.get("pre_delay_ms", 15.0)
+        preset.early_reflection_mix = dep.get("early_reflection_mix", 0.3)
+        preset.late_reverb_mix = dep.get("late_reverb_mix", 0.2)
+        self._preset_manager.save_preset(preset)
+        self._preset_selector.refresh()
+        self.statusBar().showMessage(f"Preset saved: {name}")
+
+    @pyqtSlot(str)
+    def _on_preset_delete(self, name: str) -> None:
+        if self._preset_manager.delete_preset(name):
+            self._preset_selector.refresh()
+            self.statusBar().showMessage(f"Preset deleted: {name}")
+
+    def _setup_shortcuts(self) -> None:
+        """Configure keyboard shortcuts."""
+        # Space - toggle play/stop
+        sc_play = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
+        sc_play.activated.connect(lambda: self._master_bar._play_btn.toggle())
+
+        # B - toggle bypass
+        sc_bypass = QShortcut(QKeySequence(Qt.Key.Key_B), self)
+        sc_bypass.activated.connect(lambda: self._master_bar._bypass_btn.toggle())
+
+        # Ctrl+S - save current as preset
+        sc_save = QShortcut(QKeySequence("Ctrl+S"), self)
+        sc_save.activated.connect(lambda: self._preset_selector._on_save_clicked())
+
+        # 1-6 - switch tabs
+        for i in range(6):
+            sc = QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self)
+            sc.activated.connect(lambda idx=i: self._tabs.setCurrentIndex(idx))
+
+        # A - toggle A/B comparison mode
+        sc_ab = QShortcut(QKeySequence(Qt.Key.Key_A), self)
+        sc_ab.activated.connect(self._toggle_ab_mode)
+
+        # Ctrl+Up / Ctrl+Down - volume adjust
+        sc_vol_up = QShortcut(QKeySequence("Ctrl+Up"), self)
+        sc_vol_up.activated.connect(
+            lambda: setattr(
+                self._master_bar._volume,
+                "value",
+                min(2.0, self._master_bar._volume.value + 0.05),
+            ),
+        )
+        sc_vol_down = QShortcut(QKeySequence("Ctrl+Down"), self)
+        sc_vol_down.activated.connect(
+            lambda: setattr(
+                self._master_bar._volume,
+                "value",
+                max(0.0, self._master_bar._volume.value - 0.05),
+            ),
+        )
+
+    def _on_import_audio(self) -> None:
+        """Import audio file for offline processing."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Audio File",
+            "",
+            "WAV Files (*.wav)",
+        )
+        if not path:
+            return
+
+        from src.audio.file_io import AudioFileIO
+
+        info = AudioFileIO.get_file_info(path)
+        if info:
+            self.statusBar().showMessage(
+                f"Imported: {info.filename} ({info.sample_rate}Hz, {info.duration_sec:.1f}s)"
+            )
+        else:
+            self.statusBar().showMessage("Import failed")
+
+    def _on_export_audio(self) -> None:
+        """Export processed audio to file."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Processed Audio",
+            "processed_output.wav",
+            "WAV 24-bit (*.wav);;WAV 16-bit (*.wav);;WAV 32-bit Float (*.wav)",
+        )
+        if not path:
+            return
+
+        self.statusBar().showMessage(f"Export target: {path}")
+
+    def _toggle_ab_mode(self) -> None:
+        """Toggle A/B comparison between processed and dry audio."""
+        if not self._app:
+            return
+        proc = self._app.processor
+        if not proc.ab_mode:
+            proc.ab_mode = True
+            proc.ab_showing_dry = False
+            self.statusBar().showMessage("A/B Comparison: ON (A=Processed)")
+        elif not proc.ab_showing_dry:
+            proc.ab_showing_dry = True
+            self.statusBar().showMessage("A/B Comparison: (B=Dry)")
+        else:
+            proc.ab_mode = False
+            proc.ab_showing_dry = False
+            self.statusBar().showMessage("A/B Comparison: OFF")
 
     def _update_visualizations(self) -> None:
         """Update audio visualizations from processing data."""
@@ -454,15 +738,22 @@ class MainWindow(QMainWindow):
             self.setWindowFlags(flags & ~Qt.WindowType.WindowStaysOnTopHint)
         self.show()
 
+    def _show_tutorial(self) -> None:
+        """Show the tutorial/help overlay."""
+        from src.ui.widgets.help_overlay import HelpOverlay
+
+        overlay = HelpOverlay(self)
+        overlay.show_at_center(self)
+
     def _show_about(self) -> None:
         from PyQt6.QtWidgets import QMessageBox
 
         QMessageBox.about(
             self,
             "About NPU Audio Enhancer",
-            "<h2>NPU Audio Enhancer v3.0</h2>"
+            "<h2>NPU Audio Enhancer v3.6.0</h2>"
             "<p>ARM64 Snapdragon X Elite NPU-accelerated real-time audio enhancement</p>"
-            "<p>Dramatically improved features:</p>"
+            "<p><b>Features:</b></p>"
             "<ul>"
             "<li>Phase-aware source separation with Wiener filtering & HPSS</li>"
             "<li>512-tap HRTF with pinna notch & concha resonance modeling</li>"
@@ -470,9 +761,33 @@ class MainWindow(QMainWindow):
             "<li>12-line FDN reverb with modulated delay lines</li>"
             "<li>Tape saturation harmonic exciter with transient shaping</li>"
             "<li>SABAJ A20D ES9038PRO DAC with triple-buffer NPU streaming</li>"
-            "<li>Adam-optimized deep learning recommendations</li>"
+            "<li>Audio file import/export (WAV)</li>"
+            "<li>Genre auto-detection with preset recommendations</li>"
+            "<li>Real-time audio stats dashboard (RMS/LUFS/DR)</li>"
+            "<li>Drag-and-drop effect chain reordering</li>"
+            "<li>Interactive parametric EQ curve visualizer</li>"
+            "<li>Audio player with DSP processing & transport bar</li>"
+            "<li>Batch export queue</li>"
+            "<li>Scrolling spectrogram display</li>"
+            "<li>NPU performance monitor & processing graph</li>"
+            "<li>Session history & statistics persistence</li>"
+            "<li>Preset comparison mode</li>"
+            "<li>Customizable hotkeys</li>"
+            "<li>Multi-format export (WAV/FLAC/OGG)</li>"
+            "<li>User profiles manager</li>"
+            "<li>Real-time clipping indicator</li>"
+            "<li>Preset import/export (JSON sharing)</li>"
+            "<li>Audio device selector</li>"
+            "<li>Application log viewer & debug panel</li>"
+            "<li>A/B comparison with smooth crossfade bypass</li>"
+            "<li>Tutorial / help overlay (F1)</li>"
+            "<li>System tray integration with playback controls</li>"
             "<li>Spotify / Apple Music / YouTube Music support</li>"
             "</ul>"
+            "<p><b>Shortcuts:</b> Space=Play, B=Bypass, A=A/B, F1=Help, "
+            "Ctrl+O=Import, Ctrl+E=Export, Ctrl+S=Save Preset, "
+            "Ctrl+1-6=Tabs, Ctrl+Shift+A=Preset Compare, "
+            "Ctrl+Up/Down=Volume</p>"
             "<p>Powered by ONNX Runtime + DirectML on Snapdragon X NPU</p>",
         )
 
@@ -488,7 +803,42 @@ class MainWindow(QMainWindow):
                 f"NPU: {info.get('provider', 'N/A')}"
             )
 
+    def _restore_settings(self) -> None:
+        """Restore saved window state and settings."""
+        s = self._settings_mgr.settings
+        if s.window_maximized:
+            self.showMaximized()
+        else:
+            self.setGeometry(s.window_x, s.window_y, s.window_width, s.window_height)
+        self._tabs.setCurrentIndex(s.active_tab)
+        if s.always_on_top:
+            self._always_on_top.setChecked(True)
+            self._toggle_always_on_top(True)
+        if s.last_preset != "Default":
+            preset = self._preset_manager.get_preset(s.last_preset)
+            if preset:
+                self._preset_selector._combo.setCurrentText(s.last_preset)
+
+    def _save_settings(self) -> None:
+        """Save current window state and settings."""
+        s = self._settings_mgr.settings
+        s.window_maximized = self.isMaximized()
+        if not s.window_maximized:
+            geo = self.geometry()
+            s.window_x = geo.x()
+            s.window_y = geo.y()
+            s.window_width = geo.width()
+            s.window_height = geo.height()
+        s.last_preset = self._preset_manager.current_name
+        s.active_tab = self._tabs.currentIndex()
+        s.always_on_top = self._always_on_top.isChecked()
+        if self._app:
+            s.master_volume = self._app.processor.master_gain
+            s.bypass_enabled = self._app.processor.bypass
+        self._settings_mgr.save()
+
     def closeEvent(self, event) -> None:
+        self._save_settings()
         if self._app:
             self._app.shutdown()
         event.accept()

@@ -83,6 +83,9 @@ class SourceSeparator:
         # Wiener filter accumulator state
         self._wiener_accum = {name: None for name in STEM_NAMES}
 
+        # Stem level tracking for visualization
+        self._stem_levels: dict[str, float] = {name: 0.0 for name in STEM_NAMES}
+
         # Spectral history for median filtering (HPSS)
         self._spec_history: list[np.ndarray] = []
         self._max_history = max(
@@ -220,6 +223,15 @@ class SourceSeparator:
             stems = self._npu_separate(audio)
         else:
             stems = self._spectral_separate(audio)
+
+        # Track stem levels for visualization
+        smooth = 0.3
+        for name in STEM_NAMES:
+            if name in stems:
+                rms = float(np.sqrt(np.mean(stems[name] ** 2)))
+                self._stem_levels[name] = (
+                    self._stem_levels[name] * (1 - smooth) + rms * smooth
+                )
 
         return self._remix_stems(stems, audio)
 
