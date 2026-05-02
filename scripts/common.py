@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+from typing import NoReturn
 
 APP_NAME = "NPU Audio Enhancer"
 APP_VERSION = "1.0.0"
@@ -190,7 +191,7 @@ def ensure_venv(project_dir: str) -> tuple[str, str, str]:
     return venv_dir, pip_exe, python_exe
 
 
-def pause_exit(code: int = 0) -> None:
+def pause_exit(code: int = 0) -> NoReturn:
     """Pause for user input then exit."""
     input("Press Enter to exit...")
-    sys.exit(code)
+    raise SystemExit(code)

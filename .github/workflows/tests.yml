@@ -20,10 +20,10 @@ jobs:
         run: pip install --upgrade pip && pip install "numpy>=1.26" "scipy>=1.12" "ruff>=0.8" "mypy>=1.8"
 
       - name: Ruff lint
-        run: ruff check src tests
+        run: ruff check src tests scripts build_all.py make_all_exe.py
 
-      - name: Mypy (src)
-        run: mypy src --ignore-missing-imports
+      - name: Mypy
+        run: mypy src scripts build_all.py make_all_exe.py --ignore-missing-imports
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -p "test_*.py" -v
