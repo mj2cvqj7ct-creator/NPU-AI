@@ -418,6 +418,7 @@ class MainWindow(QMainWindow):
             "Loopback capture resynced (manual)",
             4000,
         )
+        self._update_pipeline_rate_labels()
 
     @pyqtSlot(bool)
     def _on_bypass_toggled(self, bypassed: bool) -> None:
