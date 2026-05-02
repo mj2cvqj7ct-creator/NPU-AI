@@ -32,6 +32,7 @@ from src.ui.widgets.controls import (
     DepthControlPanel,
     EnhancerControlPanel,
     MasterControlBar,
+    NoiseReducerControlPanel,
     SeparationControlPanel,
     SpatialControlPanel,
 )
@@ -290,11 +291,13 @@ class MainWindow(QMainWindow):
 
         self._spatial_panel = SpatialControlPanel()
         self._separation_panel = SeparationControlPanel()
+        self._noise_panel = NoiseReducerControlPanel()
         self._enhancer_panel = EnhancerControlPanel()
         self._depth_panel = DepthControlPanel()
 
         layout.addWidget(self._spatial_panel)
         layout.addWidget(self._separation_panel)
+        layout.addWidget(self._noise_panel)
         layout.addWidget(self._enhancer_panel)
         layout.addWidget(self._depth_panel)
         layout.addStretch()
@@ -396,6 +399,7 @@ class MainWindow(QMainWindow):
 
         self._spatial_panel.params_changed.connect(self._on_spatial_changed)
         self._separation_panel.params_changed.connect(self._on_separation_changed)
+        self._noise_panel.params_changed.connect(self._on_noise_reducer_changed)
         self._enhancer_panel.params_changed.connect(self._on_enhancer_changed)
         self._depth_panel.params_changed.connect(self._on_depth_changed)
 
@@ -477,6 +481,15 @@ class MainWindow(QMainWindow):
             sep.config.instrument_clarity = params.get("instrument_clarity", 0.5)
             sep.config.bass_enhance = params.get("bass_enhance", 0.2)
             sep.config.drum_punch = params.get("drum_punch", 0.2)
+
+    @pyqtSlot(dict)
+    def _on_noise_reducer_changed(self, params: dict) -> None:
+        if self._app:
+            nr = self._app.processor.noise_reducer
+            nr.enabled = params.get("enabled", False)
+            nr.update_parameters(**{
+                k: v for k, v in params.items() if k != "enabled"
+            })
 
     @pyqtSlot(dict)
     def _on_enhancer_changed(self, params: dict) -> None:

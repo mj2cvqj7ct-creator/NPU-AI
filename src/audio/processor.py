@@ -17,6 +17,7 @@ import numpy as np
 
 from src.audio.effects.depth import DepthProcessor
 from src.audio.effects.enhancer import AudioEnhancer
+from src.audio.effects.noise_reducer import NPUNoiseReducer
 from src.audio.effects.separator import SourceSeparator
 from src.audio.effects.spatial import SpatialProcessor
 
@@ -51,16 +52,18 @@ class AudioProcessor:
 
     Processing chain:
     1. Input normalization
-    2. Source separation (vocals, drums, bass, instruments)
-    3. Per-stem enhancement (EQ, harmonics, compression)
-    4. Spatial audio & holographic processing (HRTF, crossfeed)
-    5. Depth & soundstage (early reflections, reverb)
-    6. Output limiting & loudness management
+    2. Optional NPU noise reduction (spectral attenuation)
+    3. Source separation (vocals, drums, bass, instruments)
+    4. Per-stem enhancement (EQ, harmonics, compression)
+    5. Spatial audio & holographic processing (HRTF, crossfeed)
+    6. Depth & soundstage (early reflections, reverb)
+    7. Output limiting & loudness management
     """
 
     def __init__(self, config: ProcessorConfig | None = None):
         self.config = config or ProcessorConfig()
         self._separator = SourceSeparator(self.config.sample_rate)
+        self._noise_reducer = NPUNoiseReducer(self.config.sample_rate)
         self._enhancer = AudioEnhancer(self.config.sample_rate)
         self._spatial = SpatialProcessor(self.config.sample_rate)
         self._depth = DepthProcessor(self.config.sample_rate)
@@ -82,6 +85,10 @@ class AudioProcessor:
     @property
     def enhancer(self) -> AudioEnhancer:
         return self._enhancer
+
+    @property
+    def noise_reducer(self) -> NPUNoiseReducer:
+        return self._noise_reducer
 
     @property
     def spatial(self) -> SpatialProcessor:
@@ -115,6 +122,7 @@ class AudioProcessor:
         """Connect NPU engine for AI-accelerated processing."""
         self._npu_engine_ref = engine
         self._separator.set_npu_engine(engine)
+        self._noise_reducer.set_npu_engine(engine)
         self._enhancer.set_npu_engine(engine)
         logger.info("NPU engine connected to audio processor")
 
@@ -124,11 +132,13 @@ class AudioProcessor:
             return
         self.config.sample_rate = sample_rate
         self._separator = SourceSeparator(sample_rate)
+        self._noise_reducer = NPUNoiseReducer(sample_rate)
         self._enhancer = AudioEnhancer(sample_rate)
         self._spatial = SpatialProcessor(sample_rate)
         self._depth = DepthProcessor(sample_rate)
         if self._npu_engine_ref is not None:
             self._separator.set_npu_engine(self._npu_engine_ref)
+            self._noise_reducer.set_npu_engine(self._npu_engine_ref)
             self._enhancer.set_npu_engine(self._npu_engine_ref)
         logger.info("Processor sample rate set to %d Hz", sample_rate)
 
@@ -143,6 +153,8 @@ class AudioProcessor:
             audio = np.column_stack([audio, audio])
 
         audio = self._normalize_input(audio)
+
+        audio = self._noise_reducer.process(audio)
 
         if self.config.enable_separation:
             audio = self._separator.process(audio)

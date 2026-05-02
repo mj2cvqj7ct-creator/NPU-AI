@@ -235,6 +235,37 @@ class EnhancerControlPanel(QGroupBox):
         }
 
 
+class NoiseReducerControlPanel(QGroupBox):
+    """NPU-driven spectral noise attenuation (noise_reduction ONNX)."""
+
+    params_changed = pyqtSignal(dict)
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__("AI Noise Reduction (NPU)", parent)
+
+        layout = QVBoxLayout(self)
+
+        self._enable = QCheckBox("Enable")
+        self._enable.setChecked(False)
+        self._enable.toggled.connect(self._emit_params)
+
+        self._amount = EffectSlider("Attenuation", 0, 1.0, 0.25)
+
+        self._amount.value_changed.connect(lambda _: self._emit_params())
+
+        layout.addWidget(self._enable)
+        layout.addWidget(self._amount)
+
+    def _emit_params(self) -> None:
+        self.params_changed.emit(self.get_params())
+
+    def get_params(self) -> dict[str, object]:
+        return {
+            "enabled": self._enable.isChecked(),
+            "npu_blend": self._amount.value,
+        }
+
+
 class DepthControlPanel(QGroupBox):
     """Control panel for depth and soundstage processing."""
 
