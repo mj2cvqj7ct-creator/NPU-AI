@@ -114,6 +114,27 @@ QPushButton#primaryButton:hover {{
         stop:0 #7C6CF7, stop:0.5 #8E7EFA, stop:1 #B2ABFE);
 }}
 
+QPushButton#secondaryButton {{
+    background-color: {BG_ELEVATED};
+    color: {ACCENT_SECONDARY_LIGHT};
+    border: 1px solid {ACCENT_SECONDARY}60;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 13px;
+    min-height: 38px;
+    padding: 8px 16px;
+}}
+
+QPushButton#secondaryButton:hover {{
+    background-color: {BG_HOVER};
+    border-color: {ACCENT_SECONDARY};
+}}
+
+QPushButton#secondaryButton:disabled {{
+    color: {TEXT_MUTED};
+    border-color: {BORDER_COLOR};
+}}
+
 QPushButton#dangerButton {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
         stop:0 {ACCENT_WARM}, stop:1 #E84393);

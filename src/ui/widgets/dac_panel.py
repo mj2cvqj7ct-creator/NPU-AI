@@ -66,6 +66,7 @@ class DACControlPanel(QGroupBox):
 
     config_changed = pyqtSignal(dict)
     optimize_requested = pyqtSignal()
+    loopback_resync_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__("SABAJ A20D ES9038PRO USB DAC", parent)
@@ -172,11 +173,24 @@ class DACControlPanel(QGroupBox):
             "Auto-optimize buffer and latency for NPU processing"
         )
 
+        self._resync_loopback_btn = QPushButton("Resync loopback")
+        self._resync_loopback_btn.setObjectName("secondaryButton")
+        self._resync_loopback_btn.clicked.connect(
+            self.loopback_resync_requested.emit,
+        )
+        self._resync_loopback_btn.setToolTip(
+            "Re-probe Windows default playback mix and restart WASAPI loopback. "
+            "Use if capture dropped after a driver or default-device change. "
+            "Shortcut: Ctrl+Shift+R (requires processing started)."
+        )
+        self._resync_loopback_btn.setEnabled(False)
+
         self._info_label = QLabel("")
         self._info_label.setObjectName("statusLabel")
         self._info_label.setWordWrap(True)
 
         btn_row.addWidget(self._optimize_btn)
+        btn_row.addWidget(self._resync_loopback_btn)
         btn_row.addWidget(self._info_label, 1)
         layout.addLayout(btn_row)
 
@@ -192,6 +206,9 @@ class DACControlPanel(QGroupBox):
         health_row.addWidget(self._dropout_label)
         health_row.addWidget(self._npu_time_label)
         layout.addLayout(health_row)
+
+    def set_loopback_resync_enabled(self, enabled: bool) -> None:
+        self._resync_loopback_btn.setEnabled(enabled)
 
     def _emit_config(self) -> None:
         self.config_changed.emit(self.get_config())

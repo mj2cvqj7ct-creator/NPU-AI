@@ -346,6 +346,7 @@ class MainWindow(QMainWindow):
 
         self._dac_panel.optimize_requested.connect(self._on_optimize_dac)
         self._dac_panel.config_changed.connect(self._on_dac_config_changed)
+        self._dac_panel.loopback_resync_requested.connect(self._on_resync_loopback)
 
         self._recommender_panel.track_liked.connect(self._on_track_liked)
         self._recommender_panel.track_skipped.connect(self._on_track_skipped)
@@ -357,10 +358,12 @@ class MainWindow(QMainWindow):
                 self._app.start_processing()
                 self._master_bar.set_status("Processing...")
                 self.statusBar().showMessage("Audio processing active")
+                self._dac_panel.set_loopback_resync_enabled(True)
             else:
                 self._app.stop_processing()
                 self._master_bar.set_status("Stopped")
                 self.statusBar().showMessage("Audio processing stopped")
+                self._dac_panel.set_loopback_resync_enabled(False)
 
     @pyqtSlot()
     def _on_resync_loopback(self) -> None:
