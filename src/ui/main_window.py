@@ -192,11 +192,18 @@ class MainWindow(QMainWindow):
         self._cpu_label.setObjectName("valueLabel")
         self._buffer_label = QLabel("Buffer: OK")
         self._buffer_label.setObjectName("valueLabel")
+        self._rate_label = QLabel("Rates: —")
+        self._rate_label.setObjectName("valueLabel")
+        self._rate_label.setToolTip(
+            "Loopback capture rate vs DAC/output rate. "
+            "Arrow means polyphase resample in the pipeline.",
+        )
         self._npu_load_label = QLabel("NPU: --")
         self._npu_load_label.setObjectName("valueLabel")
         stats_row.addWidget(self._latency_label)
         stats_row.addWidget(self._cpu_label)
         stats_row.addWidget(self._buffer_label)
+        stats_row.addWidget(self._rate_label)
         stats_row.addWidget(self._npu_load_label)
         layout.addLayout(stats_row)
 
@@ -522,6 +529,20 @@ class MainWindow(QMainWindow):
             self._buffer_label.setStyleSheet("color: #FDCB6E;")
         else:
             self._buffer_label.setStyleSheet("color: #8B949E;")
+
+        if self._master_bar.is_playing:
+            ri = self._app.pipeline_rate_info()
+            lb = int(ri["loopback_hz"])
+            out = int(ri["output_hz"])
+            if ri["resampling"]:
+                self._rate_label.setText(f"Rates: {lb}→{out} Hz")
+                self._rate_label.setStyleSheet("color: #FDCB6E;")
+            else:
+                self._rate_label.setText(f"Rates: {lb} Hz")
+                self._rate_label.setStyleSheet("color: #55EFC4;")
+        else:
+            self._rate_label.setText("Rates: —")
+            self._rate_label.setStyleSheet("color: #8B949E;")
 
         # DAC badge
         dac_name = dac_status.get("device_name", "N/A")
