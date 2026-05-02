@@ -92,7 +92,8 @@ class DACControlPanel(QGroupBox):
         self._pipeline_rates_label.setWordWrap(True)
         self._pipeline_rates_label.setToolTip(
             "Windows default playback mix (loopback) vs DAC output sample rate. "
-            "Resample: polyphase in the processing path.",
+            "Resample: polyphase in the processing path. "
+            "When idle, loopback rate is re-probed about every 1.5 s.",
         )
         layout.addWidget(self._pipeline_rates_label)
 

@@ -18,6 +18,7 @@ from scipy import signal
 
 from src.audio.capture import (
     WASAPICapture,
+    invalidate_default_render_endpoint_cache,
     probe_default_render_endpoint_state,
     probe_default_render_mix_sample_rate,
 )
@@ -97,6 +98,7 @@ class AudioEnhancerApp:
         Call from UI timer while processing. Returns True if capture restarted.
         """
         with self._endpoint_sync_lock:
+            invalidate_default_render_endpoint_cache()
             st = probe_default_render_endpoint_state()
             if st is None:
                 return False
@@ -120,6 +122,7 @@ class AudioEnhancerApp:
         or after external driver tweaks.
         """
         with self._endpoint_sync_lock:
+            invalidate_default_render_endpoint_cache()
             st = probe_default_render_endpoint_state()
             if st:
                 self._render_signature = self._render_sig_from_state(st)
@@ -132,6 +135,7 @@ class AudioEnhancerApp:
 
     def _sync_pipeline_sample_rates(self) -> None:
         """Align capture buffer and DSP sample rate with DAC output."""
+        invalidate_default_render_endpoint_cache()
         out_sr = self._dac_controller.config.sample_rate.value
         self._processor.set_sample_rate(out_sr)
         mix_sr = probe_default_render_mix_sample_rate()
@@ -265,6 +269,7 @@ class AudioEnhancerApp:
             "underrun_count", 0,
         )
 
+        invalidate_default_render_endpoint_cache()
         self._sync_pipeline_sample_rates()
         self._sync_render_signature()
         self._capture.start()

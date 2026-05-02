@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable
@@ -17,6 +18,41 @@ from typing import Callable
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+_ENDPOINT_CACHE_TTL_S = 1.5
+_endpoint_state_cache: tuple[str, int, int, int] | None = None
+_endpoint_state_cache_ts: float = 0.0
+
+
+def invalidate_default_render_endpoint_cache() -> None:
+    """Clear cached default render endpoint (call after routing or mix likely changed)."""
+    global _endpoint_state_cache, _endpoint_state_cache_ts
+    _endpoint_state_cache = None
+    _endpoint_state_cache_ts = 0.0
+
+
+def cached_default_render_endpoint_state(
+    ttl_s: float = _ENDPOINT_CACHE_TTL_S,
+) -> tuple[str, int, int, int] | None:
+    """Probe default render endpoint with short TTL to spare COM from UI timers."""
+    global _endpoint_state_cache, _endpoint_state_cache_ts
+    now = time.monotonic()
+    if (
+        _endpoint_state_cache is not None
+        and (now - _endpoint_state_cache_ts) < ttl_s
+    ):
+        return _endpoint_state_cache
+    st = probe_default_render_endpoint_state()
+    if st is not None:
+        _endpoint_state_cache = st
+        _endpoint_state_cache_ts = now
+    return st
+
+
+def peek_default_render_mix_hz() -> int | None:
+    """Mix rate without INFO log; uses short cache (safe for UI timers)."""
+    st = cached_default_render_endpoint_state()
+    return st[1] if st else None
 
 
 def probe_default_render_endpoint_state() -> tuple[str, int, int, int] | None:
@@ -63,12 +99,6 @@ def probe_default_render_mix_sample_rate() -> int | None:
     st = probe_default_render_endpoint_state()
     if st:
         logger.info("Default render mix sample rate: %d Hz", st[1])
-    return st[1] if st else None
-
-
-def peek_default_render_mix_hz() -> int | None:
-    """Same as probe mix rate but without INFO log (safe for UI timers)."""
-    st = probe_default_render_endpoint_state()
     return st[1] if st else None
 
 

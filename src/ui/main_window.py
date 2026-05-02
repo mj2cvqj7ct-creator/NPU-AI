@@ -197,7 +197,7 @@ class MainWindow(QMainWindow):
         self._rate_label.setToolTip(
             "Loopback capture rate vs DAC/output rate. "
             "Arrow means polyphase resample in the pipeline. "
-            "When idle, loopback shows the probed Windows default mix.",
+            "When idle, loopback shows the probed Windows default mix (~1.5s cache).",
         )
         self._npu_load_label = QLabel("NPU: --")
         self._npu_load_label.setObjectName("valueLabel")
