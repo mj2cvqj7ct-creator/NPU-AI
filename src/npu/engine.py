@@ -125,6 +125,9 @@ class NPUEngine:
     def is_npu_active(self) -> bool:
         return self._active_provider == ExecutionProvider.NPU_DIRECTML
 
+    def is_model_loaded(self, name: str) -> bool:
+        return name in self._sessions
+
     def load_model(self, name: str, model_path: str) -> bool:
         """Load an ONNX model for inference."""
         if not self.is_available:

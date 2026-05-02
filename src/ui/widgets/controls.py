@@ -196,6 +196,8 @@ class EnhancerControlPanel(QGroupBox):
         self._enable.setChecked(True)
         self._enable.toggled.connect(self._emit_params)
 
+        self._npu_blend = EffectSlider("AI spectral (NPU)", 0, 1.0, 0.35)
+
         self._warmth = EffectSlider("Warmth", 0, 1.0, 0.3)
         self._clarity = EffectSlider("Clarity", 0, 1.0, 0.5)
         self._presence = EffectSlider("Presence", 0, 1.0, 0.4)
@@ -205,6 +207,7 @@ class EnhancerControlPanel(QGroupBox):
         self._stereo_width = EffectSlider("Stereo Width", -0.5, 1.0, 0.0)
 
         sliders = [
+            self._npu_blend,
             self._warmth, self._clarity, self._presence, self._air,
             self._bass_boost, self._exciter, self._stereo_width,
         ]
@@ -221,6 +224,7 @@ class EnhancerControlPanel(QGroupBox):
     def get_params(self) -> dict[str, object]:
         return {
             "enabled": self._enable.isChecked(),
+            "npu_blend": self._npu_blend.value,
             "warmth": self._warmth.value,
             "clarity": self._clarity.value,
             "presence": self._presence.value,

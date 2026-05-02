@@ -115,6 +115,7 @@ class AudioProcessor:
         """Connect NPU engine for AI-accelerated processing."""
         self._npu_engine_ref = engine
         self._separator.set_npu_engine(engine)
+        self._enhancer.set_npu_engine(engine)
         logger.info("NPU engine connected to audio processor")
 
     def set_sample_rate(self, sample_rate: int) -> None:
@@ -128,6 +129,7 @@ class AudioProcessor:
         self._depth = DepthProcessor(sample_rate)
         if self._npu_engine_ref is not None:
             self._separator.set_npu_engine(self._npu_engine_ref)
+            self._enhancer.set_npu_engine(self._npu_engine_ref)
         logger.info("Processor sample rate set to %d Hz", sample_rate)
 
     def process(self, audio: np.ndarray) -> np.ndarray:
