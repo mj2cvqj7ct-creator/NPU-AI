@@ -7,6 +7,7 @@ DAC output, and recommendation engine into a unified real-time pipeline.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import threading
@@ -331,12 +332,24 @@ class AudioEnhancerApp:
                 continue
 
             try:
-                out_sr = self._dac_controller.config.sample_rate.value
+                out_sr = int(self._dac_controller.config.sample_rate.value)
+                if out_sr <= 0:
+                    logger.warning(
+                        "Invalid DAC sample rate %s; skipping frame", out_sr,
+                    )
+                    continue
+
                 if out_sr != last_out_sr:
                     self._processor.set_sample_rate(out_sr)
                     last_out_sr = out_sr
 
-                cap_sr = self._capture.effective_sample_rate
+                cap_sr = int(self._capture.effective_sample_rate)
+                if cap_sr <= 0:
+                    logger.warning(
+                        "Invalid capture sample rate %s; skipping frame", cap_sr,
+                    )
+                    continue
+
                 if cap_sr != out_sr:
                     audio = self._resample_audio(audio, cap_sr, out_sr)
 
@@ -410,5 +423,6 @@ class AudioEnhancerApp:
         """Shutdown all components gracefully."""
         logger.info("Shutting down NPU Audio Enhancer...")
         self.stop_processing()
-        self._npu_engine.shutdown()
+        with contextlib.suppress(Exception):
+            self._npu_engine.shutdown()
         logger.info("NPU Audio Enhancer shut down")
