@@ -52,6 +52,18 @@ class AudioEnhancer:
 
         self._build_processing_chain()
 
+    _TUNABLE_KEYS = frozenset({
+        "warmth",
+        "clarity",
+        "presence",
+        "air",
+        "bass_boost",
+        "exciter",
+        "stereo_width",
+        "npu_blend",
+        "loudness_target",
+    })
+
     @property
     def enabled(self) -> bool:
         return self._enhancer_enabled
@@ -327,7 +339,7 @@ class AudioEnhancer:
         prev_blend = self.npu_blend
         changed = False
         for key, value in kwargs.items():
-            if key == "enabled":
+            if key == "enabled" or key not in self._TUNABLE_KEYS:
                 continue
             if hasattr(self, key) and getattr(self, key) != value:
                 setattr(self, key, value)

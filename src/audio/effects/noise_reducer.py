@@ -41,6 +41,8 @@ class NPUNoiseReducer:
         self._out_fifo: list[np.ndarray] = []
         self._mask_ema: np.ndarray | None = None
 
+    _TUNABLE_KEYS = frozenset({"npu_blend"})
+
     def set_npu_engine(self, engine: object | None) -> None:
         self._npu_engine = engine
         self._reset_state()
@@ -64,15 +66,10 @@ class NPUNoiseReducer:
         self._out_fifo = []
         self._mask_ema = None
 
-    def reset_streaming_state(self) -> None:
-        """Clear OLA state when the stage is bypassed at the pipeline level."""
-        self._reset_state()
-
     def update_parameters(self, **kwargs: float) -> None:
         prev = self.npu_blend
-        skip = frozenset({"enabled"})
         for key, value in kwargs.items():
-            if key in skip or key.startswith("_"):
+            if key not in self._TUNABLE_KEYS:
                 continue
             if hasattr(self, key):
                 setattr(self, key, value)
