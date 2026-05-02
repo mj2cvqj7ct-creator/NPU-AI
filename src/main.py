@@ -28,7 +28,7 @@ def main() -> int:
     """Application entry point."""
     setup_logging()
     logger = logging.getLogger(__name__)
-    logger.info("Starting NPU Audio Enhancer v3.0")
+    logger.info("Starting NPU Audio Enhancer v3.1.0")
 
     try:
         from PyQt6.QtGui import QFont

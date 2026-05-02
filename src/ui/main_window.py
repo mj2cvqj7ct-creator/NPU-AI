@@ -477,8 +477,8 @@ class MainWindow(QMainWindow):
         sc_save = QShortcut(QKeySequence("Ctrl+S"), self)
         sc_save.activated.connect(lambda: self._preset_selector._on_save_clicked())
 
-        # 1-4 - switch effect tabs
-        for i in range(4):
+        # 1-3 - switch effect tabs
+        for i in range(3):
             sc = QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self)
             sc.activated.connect(lambda idx=i: self._tabs.setCurrentIndex(idx))
 
@@ -597,7 +597,7 @@ class MainWindow(QMainWindow):
             "<li>Spotify / Apple Music / YouTube Music support</li>"
             "</ul>"
             "<p><b>Shortcuts:</b> Space=Play/Stop, B=Bypass, "
-            "Ctrl+S=Save Preset, Ctrl+1-4=Tabs, Ctrl+Up/Down=Volume</p>"
+            "Ctrl+S=Save Preset, Ctrl+1-3=Tabs, Ctrl+Up/Down=Volume</p>"
             "<p>Powered by ONNX Runtime + DirectML on Snapdragon X NPU</p>",
         )
 
