@@ -357,7 +357,7 @@ class FDNReverb:
             mixed = self._mix @ taps
 
             # Write back with allpass diffusion, feedback, and damping
-            for i, delay in enumerate(self._delays):
+            for i, _delay in enumerate(self._delays):
                 # Two-band damping (low-shelf + high-shelf)
                 lp = mixed[i] * (1.0 - damp_lo) + self._lp_state[i] * damp_lo
                 self._lp_state[i] = lp

@@ -228,7 +228,7 @@ class SpatialProcessor:
         self._allpass_buffers_r = []
         self._allpass_indices_l: list[int] = []
         self._allpass_indices_r: list[int] = []
-        for delay_ms, coeff in zip(delay_ms_list, coeffs):
+        for delay_ms, coeff in zip(delay_ms_list, coeffs, strict=True):
             delay = max(1, int(delay_ms * self.sample_rate / 1000))
             self._allpass_coeffs.append((coeff, delay))
             self._allpass_buffers_l.append(np.zeros(delay, dtype=np.float64))

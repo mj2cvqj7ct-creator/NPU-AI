@@ -7,6 +7,7 @@ for Spotify, Apple Music, and YouTube Music on ARM64 Snapdragon X.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sys
 
@@ -40,12 +41,10 @@ def main() -> int:
         )
         return 1
 
-    try:
+    with contextlib.suppress(Exception):
         QApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough,
         )
-    except Exception:
-        pass
 
     app = QApplication(sys.argv)
     app.setApplicationName("NPU Audio Enhancer")

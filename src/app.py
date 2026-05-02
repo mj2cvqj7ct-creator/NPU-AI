@@ -25,7 +25,7 @@ from src.audio.capture import (
 from src.audio.output import AudioOutput, OutputConfig
 from src.audio.processor import AudioProcessor
 from src.dac.xmos_controller import XMOSController
-from src.npu.engine import NPUEngine, NPUConfig
+from src.npu.engine import NPUConfig, NPUEngine
 from src.recommender.engine import RecommendationEngine
 
 logger = logging.getLogger(__name__)

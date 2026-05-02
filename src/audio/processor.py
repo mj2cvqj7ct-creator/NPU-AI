@@ -156,7 +156,8 @@ class AudioProcessor:
         self._spatial = SpatialProcessor(sample_rate)
         self._depth = DepthProcessor(sample_rate)
 
-        # Re-apply stage enables so UI state survives sample-rate changes (new instances default on).
+        # Re-apply stage enables so UI state survives sample-rate changes
+        # (new instances default on).
         self._separator.config.enabled = self.config.enable_separation
         self._noise_reducer.enabled = self.config.enable_noise_reduction
         self._enhancer.enabled = self.config.enable_enhancement
