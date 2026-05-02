@@ -83,7 +83,27 @@ class AudioOutput:
             except Exception:
                 pass
             self._stream = None
+        while True:
+            try:
+                self._output_queue.get_nowait()
+            except queue.Empty:
+                break
         logger.info("Audio output stopped (underruns: %d)", self._underrun_count)
+
+    def apply_config(self, config: OutputConfig) -> None:
+        """Replace output config and recreate the stream if already playing."""
+        was_playing = self._is_playing
+        if was_playing:
+            self.stop()
+        self.config = config
+        if was_playing:
+            self.start()
+        logger.info(
+            "Output config applied: %dHz, buffer=%dms, exclusive=%s",
+            self.config.sample_rate,
+            self.config.buffer_size_ms,
+            self.config.exclusive_mode,
+        )
 
     def write(self, audio_data: np.ndarray) -> None:
         """Queue audio data for output."""

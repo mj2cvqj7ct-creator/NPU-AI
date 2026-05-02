@@ -40,18 +40,7 @@ class AudioEnhancerApp:
         self._capture = WASAPICapture()
         self._dac_controller = XMOSController()
 
-        output_config = OutputConfig(
-            device_name=(
-                self._dac_controller.info.name
-                if self._dac_controller.is_connected
-                else None
-            ),
-            sample_rate=48000,
-            channels=2,
-            buffer_size_ms=10,
-            exclusive_mode=True,
-        )
-        self._output = AudioOutput(output_config)
+        self._output = AudioOutput(self._build_output_config())
         self._recommender = RecommendationEngine()
 
         self._processing_thread: threading.Thread | None = None
@@ -59,6 +48,7 @@ class AudioEnhancerApp:
         self._latest_audio: np.ndarray | None = None
         self._latest_viz_data: dict | None = None
         self._lock = threading.Lock()
+        self._last_output_underrun_count = 0
 
         self._connect_components()
         logger.info("NPU Audio Enhancer initialized")
@@ -71,6 +61,63 @@ class AudioEnhancerApp:
         if self._dac_controller.is_connected:
             settings = self._dac_controller.optimize_for_npu()
             logger.info("DAC optimized for NPU: %s", settings)
+        self._sync_output_from_dac()
+
+    def _build_output_config(self) -> OutputConfig:
+        c = self._dac_controller.config
+        return OutputConfig(
+            device_name=(
+                self._dac_controller.info.name
+                if self._dac_controller.is_connected
+                else None
+            ),
+            sample_rate=c.sample_rate.value,
+            channels=2,
+            bit_depth=c.bit_depth.value,
+            buffer_size_ms=c.buffer_size_ms,
+            exclusive_mode=c.exclusive_mode,
+        )
+
+    def _sync_output_from_dac(self) -> None:
+        """Apply XMOS/DAC buffer and device settings to the playback stream."""
+        self._output.apply_config(self._build_output_config())
+
+    def apply_dac_settings_from_ui(self, ui: dict) -> None:
+        """Apply DAC panel values (rates, buffers, exclusive) and sync output."""
+        from src.dac.xmos_controller import (
+            BitDepth,
+            DACConfig,
+            DACFilter,
+            SampleRate,
+        )
+
+        sr_val = int(ui.get("sample_rate", 48000))
+        sample_rate = next(
+            (s for s in SampleRate if s.value == sr_val),
+            SampleRate.SR_48000,
+        )
+        bd_val = int(ui.get("bit_depth", 32))
+        bit_depth = next(
+            (b for b in BitDepth if b.value == bd_val),
+            BitDepth.BIT_32,
+        )
+        filt_raw = ui.get("dac_filter", DACFilter.SLOW_MINIMUM.value)
+        dac_filter = next(
+            (f for f in DACFilter if f.value == filt_raw),
+            DACFilter.SLOW_MINIMUM,
+        )
+        self._dac_controller.configure(
+            DACConfig(
+                sample_rate=sample_rate,
+                bit_depth=bit_depth,
+                buffer_size_ms=int(ui.get("buffer_size_ms", 10)),
+                latency_ms=int(ui.get("latency_ms", 5)),
+                exclusive_mode=bool(ui.get("exclusive_mode", True)),
+                triple_buffer=bool(ui.get("triple_buffer", True)),
+                dac_filter=dac_filter,
+            ),
+        )
+        self._sync_output_from_dac()
 
     @property
     def processor(self) -> AudioProcessor:
@@ -88,12 +135,19 @@ class AudioEnhancerApp:
     def recommender(self) -> RecommendationEngine:
         return self._recommender
 
+    @property
+    def output_stats(self) -> dict:
+        return self._output.stats
+
     def start_processing(self) -> None:
         """Start the real-time audio processing pipeline."""
         if self._is_running:
             return
 
         self._is_running = True
+        self._last_output_underrun_count = self._output.stats.get(
+            "underrun_count", 0,
+        )
 
         self._capture.start()
         self._output.start()
@@ -117,6 +171,7 @@ class AudioEnhancerApp:
 
         self._capture.stop()
         self._output.stop()
+        self._last_output_underrun_count = 0
 
         logger.info("Audio processing pipeline stopped")
 
@@ -138,6 +193,13 @@ class AudioEnhancerApp:
                 # Report processing time to DAC for adaptive buffer optimization
                 proc_ms = self._processor.stats.processing_time_ms
                 self._dac_controller.report_npu_processing_time(proc_ms)
+
+                out_stats = self._output.stats
+                u = int(out_stats.get("underrun_count", 0))
+                if u > self._last_output_underrun_count:
+                    for _ in range(u - self._last_output_underrun_count):
+                        self._dac_controller.report_buffer_underrun()
+                    self._last_output_underrun_count = u
 
                 with self._lock:
                     self._latest_audio = processed

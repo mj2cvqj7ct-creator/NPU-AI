@@ -361,12 +361,12 @@ class MainWindow(QMainWindow):
         if self._app:
             settings = self._app.dac_controller.optimize_for_npu()
             self._dac_panel.show_optimization_result(settings)
+            self._app.apply_dac_settings_from_ui(self._dac_panel.get_config())
 
     @pyqtSlot(dict)
     def _on_dac_config_changed(self, config: dict) -> None:
         if self._app:
-            self._app.dac_controller.set_buffer_size(config.get("buffer_size_ms", 10))
-            self._app.dac_controller.set_latency(config.get("latency_ms", 5))
+            self._app.apply_dac_settings_from_ui(config)
 
     @pyqtSlot()
     def _on_track_liked(self) -> None:
@@ -426,12 +426,26 @@ class MainWindow(QMainWindow):
                 "color: #8B949E; border-color: #8B949E;"
             )
 
-        # NPU processing time
-        npu_ms = npu_info.get("avg_inference_ms", 0)
-        self._npu_load_label.setText(f"NPU: {npu_ms:.1f}ms")
+        npu_infer_ms = float(npu_info.get("avg_inference_ms", 0.0))
+        if npu_infer_ms > 0:
+            self._npu_load_label.setText(f"Infer: {npu_infer_ms:.2f} ms")
+        else:
+            self._npu_load_label.setText("Infer: —")
 
         dac_status = self._app.dac_controller.get_status_info()
         self._dac_panel.update_status(dac_status)
+
+        out_stats = self._app.output_stats
+        out_u = int(out_stats.get("underrun_count", 0))
+        qsz = int(out_stats.get("queue_size", 0))
+        buf_warn = out_u > 0 or qsz > 48
+        self._buffer_label.setText(
+            f"Buffer: {'warn' if buf_warn else 'OK'} (q={qsz})",
+        )
+        if buf_warn:
+            self._buffer_label.setStyleSheet("color: #FDCB6E;")
+        else:
+            self._buffer_label.setStyleSheet("color: #8B949E;")
 
         # DAC badge
         dac_name = dac_status.get("device_name", "N/A")

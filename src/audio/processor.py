@@ -128,6 +128,8 @@ class AudioProcessor:
 
         if self.config.enable_separation:
             audio = self._separator.process(audio)
+        else:
+            self._separator.clear_stem_levels()
 
         if self.config.enable_enhancement:
             audio = self._enhancer.process(audio)
@@ -204,8 +206,12 @@ class AudioProcessor:
 
         waveform = mono[:: max(1, len(mono) // 512)]
 
+        stem_levels: dict[str, float] = {}
+        if self.config.enable_separation:
+            stem_levels = dict(self._separator.last_stem_levels)
+
         return {
             "spectrum": spectrum_db.tolist(),
             "waveform": waveform.tolist(),
-            "stem_levels": {},
+            "stem_levels": stem_levels,
         }

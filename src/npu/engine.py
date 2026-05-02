@@ -231,12 +231,22 @@ class NPUEngine:
             info["available_providers"] = self._ort.get_available_providers()
 
         model_stats = {}
+        total_infer_ms = 0.0
+        total_infer_count = 0
         for name, mi in self._models.items():
             model_stats[name] = {
                 "infer_count": mi.infer_count,
                 "avg_ms": round(mi.avg_infer_ms, 2),
             }
+            total_infer_ms += mi.total_infer_ms
+            total_infer_count += mi.infer_count
         info["model_stats"] = model_stats
+        if total_infer_count > 0:
+            info["avg_inference_ms"] = round(
+                total_infer_ms / total_infer_count, 3,
+            )
+        else:
+            info["avg_inference_ms"] = 0.0
 
         return info
 

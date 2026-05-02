@@ -89,6 +89,9 @@ class SourceSeparator:
             self.config.hpss_kernel_harmonic,
             self.config.hpss_kernel_percussive,
         )
+        self._last_stem_levels: dict[str, float] = {
+            n: 0.0 for n in STEM_NAMES
+        }
 
     def set_npu_engine(self, engine: object) -> None:
         self._npu_engine = engine
@@ -211,6 +214,7 @@ class SourceSeparator:
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         if not self.config.enabled or audio.shape[0] == 0:
+            self._last_stem_levels = {n: 0.0 for n in STEM_NAMES}
             return audio
 
         if audio.ndim == 1:
@@ -222,6 +226,14 @@ class SourceSeparator:
             stems = self._spectral_separate(audio)
 
         return self._remix_stems(stems, audio)
+
+    @property
+    def last_stem_levels(self) -> dict[str, float]:
+        """Per-stem RMS levels (0..1) for UI meters, updated each process() call."""
+        return dict(self._last_stem_levels)
+
+    def clear_stem_levels(self) -> None:
+        self._last_stem_levels = {n: 0.0 for n in STEM_NAMES}
 
     def _npu_separate(self, audio: np.ndarray) -> dict[str, np.ndarray]:
         try:
@@ -392,6 +404,26 @@ class SourceSeparator:
             "bass": 1.0 + self.config.bass_enhance,
             "other": 1.0 + self.config.instrument_clarity * 0.5,
         }
+
+        stem_rms: dict[str, float] = {}
+        peak_rms = 1e-10
+        for name in STEM_NAMES:
+            stem = stems.get(name)
+            valid_shape = (
+                stem is not None and stem.shape == original.shape
+            )
+            gain = gain_map.get(name, 1.0)
+            if valid_shape and stem is not None:
+                weighted = stem.astype(np.float64) * gain
+                rms = float(np.sqrt(np.mean(weighted**2)))
+                stem_rms[name] = rms
+                peak_rms = max(peak_rms, rms)
+            else:
+                stem_rms[name] = 0.0
+        for name in STEM_NAMES:
+            self._last_stem_levels[name] = float(
+                min(1.0, stem_rms.get(name, 0.0) / peak_rms),
+            )
 
         for name, stem in stems.items():
             if stem.shape != original.shape:

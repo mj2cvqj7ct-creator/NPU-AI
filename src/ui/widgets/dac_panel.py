@@ -214,10 +214,32 @@ class DACControlPanel(QGroupBox):
         self._status_label.setText(status_info.get("device_name", "Unknown"))
 
         if "sample_rate" in status_info:
-            for i in range(self._sample_rate.count()):
-                if self._sample_rate.itemData(i) == status_info["sample_rate"]:
-                    self._sample_rate.setCurrentIndex(i)
-                    break
+            for w in (
+                self._sample_rate,
+                self._bit_depth,
+                self._dac_filter,
+                self._buffer_size,
+                self._latency,
+                self._exclusive_check,
+                self._triple_buf_check,
+            ):
+                w.blockSignals(True)
+            try:
+                for i in range(self._sample_rate.count()):
+                    if self._sample_rate.itemData(i) == status_info["sample_rate"]:
+                        self._sample_rate.setCurrentIndex(i)
+                        break
+            finally:
+                for w in (
+                    self._sample_rate,
+                    self._bit_depth,
+                    self._dac_filter,
+                    self._buffer_size,
+                    self._latency,
+                    self._exclusive_check,
+                    self._triple_buf_check,
+                ):
+                    w.blockSignals(False)
 
         # Health monitoring
         health = status_info.get("buffer_health", 1.0)
