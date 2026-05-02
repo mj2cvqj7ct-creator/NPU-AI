@@ -112,8 +112,8 @@ class AudioOutput:
 
         if self._muted:
             audio_data = np.zeros_like(audio_data)
-        else:
-            audio_data = audio_data * self._volume
+        # Do not scale by self._volume here: the DSP pipeline applies master_gain;
+        # scaling twice made the Master slider non-linear (gain²).
 
         try:
             self._output_queue.put_nowait(audio_data)

@@ -354,17 +354,21 @@ class AudioEnhancerApp:
 
                 frame_count += 1
                 if frame_count % recommend_interval == 0:
-                    self._update_recommendations(audio)
+                    # Features must use the same sample rate as the buffer (post-resample).
+                    self._update_recommendations(audio, sample_rate=out_sr)
 
             except Exception as e:
                 logger.error("Processing error: %s", e)
                 time.sleep(0.001)
 
-    def _update_recommendations(self, audio: np.ndarray) -> None:
+    def _update_recommendations(
+        self, audio: np.ndarray, *, sample_rate: int,
+    ) -> None:
         """Update recommendation engine with current audio features."""
         try:
-            sr = self._dac_controller.config.sample_rate.value
-            features = self._recommender.analyze_audio(audio, sample_rate=sr)
+            features = self._recommender.analyze_audio(
+                audio, sample_rate=sample_rate,
+            )
             self._recommender.update_preferences(features, liked=True)
         except Exception as e:
             logger.debug("Recommendation update error: %s", e)

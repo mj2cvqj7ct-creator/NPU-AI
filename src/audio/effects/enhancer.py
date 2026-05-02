@@ -323,10 +323,12 @@ class AudioEnhancer:
         gain_db = np.clip(self.loudness_target - avg_lufs, -6.0, 6.0)
         return audio * (10 ** (gain_db / 20.0))
 
-    def update_parameters(self, **kwargs: float) -> None:
+    def update_parameters(self, **kwargs: object) -> None:
         prev_blend = self.npu_blend
         changed = False
         for key, value in kwargs.items():
+            if key == "enabled":
+                continue
             if hasattr(self, key) and getattr(self, key) != value:
                 setattr(self, key, value)
                 changed = True
