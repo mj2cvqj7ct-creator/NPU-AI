@@ -468,11 +468,13 @@ class MainWindow(QMainWindow):
             settings = self._app.dac_controller.optimize_for_npu()
             self._dac_panel.show_optimization_result(settings)
             self._app.apply_dac_settings_from_ui(self._dac_panel.get_config())
+            self._update_pipeline_rate_labels()
 
     @pyqtSlot(dict)
     def _on_dac_config_changed(self, config: dict) -> None:
         if self._app:
             self._app.apply_dac_settings_from_ui(config)
+            self._update_pipeline_rate_labels()
 
     @pyqtSlot()
     def _on_track_liked(self) -> None:
