@@ -108,7 +108,11 @@ class MainWindow(QMainWindow):
                     f"Audio device updated ({label}) — capture resynced",
                     5000,
                 )
-        self._update_pipeline_rate_labels()
+                self._refresh_rates_after_capture_restart()
+            else:
+                self._update_pipeline_rate_labels()
+        else:
+            self._update_pipeline_rate_labels()
 
     def _update_pipeline_rate_labels(self) -> None:
         """Refresh loopback vs output in analysis row and DAC Pipeline line."""
@@ -398,6 +402,12 @@ class MainWindow(QMainWindow):
         self._rate_defer_timer.stop()
         self._rate_defer_timer.start()
 
+    def _refresh_rates_after_capture_restart(self) -> None:
+        """After capture stop/start, refresh labels now and once mix rate is set."""
+        self._update_pipeline_rate_labels()
+        if self._master_bar.is_playing:
+            self._schedule_deferred_rate_refresh()
+
     @pyqtSlot(bool)
     def _on_play_toggled(self, playing: bool) -> None:
         if self._app:
@@ -406,8 +416,7 @@ class MainWindow(QMainWindow):
                 self._master_bar.set_status("Processing...")
                 self.statusBar().showMessage("Audio processing active")
                 self._dac_panel.set_loopback_resync_enabled(True)
-                self._update_pipeline_rate_labels()
-                self._schedule_deferred_rate_refresh()
+                self._refresh_rates_after_capture_restart()
             else:
                 self._rate_defer_timer.stop()
                 self._app.stop_processing()
@@ -431,7 +440,7 @@ class MainWindow(QMainWindow):
             "Loopback capture resynced (manual)",
             4000,
         )
-        self._update_pipeline_rate_labels()
+        self._refresh_rates_after_capture_restart()
 
     @pyqtSlot(bool)
     def _on_bypass_toggled(self, bypassed: bool) -> None:
@@ -481,13 +490,13 @@ class MainWindow(QMainWindow):
             settings = self._app.dac_controller.optimize_for_npu()
             self._dac_panel.show_optimization_result(settings)
             self._app.apply_dac_settings_from_ui(self._dac_panel.get_config())
-            self._update_pipeline_rate_labels()
+            self._refresh_rates_after_capture_restart()
 
     @pyqtSlot(dict)
     def _on_dac_config_changed(self, config: dict) -> None:
         if self._app:
             self._app.apply_dac_settings_from_ui(config)
-            self._update_pipeline_rate_labels()
+            self._refresh_rates_after_capture_restart()
 
     @pyqtSlot()
     def _on_track_liked(self) -> None:
@@ -521,7 +530,7 @@ class MainWindow(QMainWindow):
                 "Default playback device or format changed — capture resynced",
                 4000,
             )
-            self._update_pipeline_rate_labels()
+            self._refresh_rates_after_capture_restart()
 
     def _update_stats(self) -> None:
         """Update processing statistics display."""
