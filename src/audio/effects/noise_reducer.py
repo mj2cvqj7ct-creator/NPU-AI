@@ -66,6 +66,10 @@ class NPUNoiseReducer:
         self._out_fifo = []
         self._mask_ema = None
 
+    def reset_streaming_state(self) -> None:
+        """Clear OLA state when the stage is pipeline-bypassed."""
+        self._reset_state()
+
     def update_parameters(self, **kwargs: float) -> None:
         prev = self.npu_blend
         for key, value in kwargs.items():
