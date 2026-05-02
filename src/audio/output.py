@@ -51,12 +51,14 @@ class AudioOutput:
 
         self._underrun_count = 0
         self._total_frames = 0
+        self._carry_buf: np.ndarray | None = None
 
     def start(self) -> None:
         if self._is_playing:
             return
 
         self._is_playing = True
+        self._carry_buf = None
         self._output_thread = threading.Thread(
             target=self._output_loop,
             daemon=True,
@@ -88,6 +90,7 @@ class AudioOutput:
                 self._output_queue.get_nowait()
             except queue.Empty:
                 break
+        self._carry_buf = None
         logger.info("Audio output stopped (underruns: %d)", self._underrun_count)
 
     def apply_config(self, config: OutputConfig) -> None:
@@ -136,16 +139,43 @@ class AudioOutput:
                 if status.output_underflow:
                     self._underrun_count += 1
 
-            try:
-                data = self._output_queue.get_nowait()
-                if data.shape[0] >= frames:
-                    outdata[:] = data[:frames]
-                else:
-                    outdata[: data.shape[0]] = data
-                    outdata[data.shape[0] :] = 0
-                self._total_frames += frames
-            except queue.Empty:
-                outdata[:] = 0
+            ch = int(outdata.shape[1])
+            pos = 0
+            while pos < frames:
+                if self._carry_buf is not None and self._carry_buf.shape[0] > 0:
+                    blk = self._carry_buf
+                    n_take = min(frames - pos, blk.shape[0])
+                    outdata[pos : pos + n_take] = blk[:n_take]
+                    pos += n_take
+                    if n_take < blk.shape[0]:
+                        self._carry_buf = blk[n_take:].copy()
+                    else:
+                        self._carry_buf = None
+                    continue
+
+                try:
+                    data = self._output_queue.get_nowait()
+                except queue.Empty:
+                    outdata[pos:] = 0
+                    break
+
+                if data.ndim == 1:
+                    data = np.column_stack([data, data])
+                if data.size == 0 or data.shape[0] == 0:
+                    continue
+                if data.shape[1] != ch:
+                    if data.shape[1] == 1 and ch > 1:
+                        data = np.repeat(data, ch, axis=1)
+                    else:
+                        data = data[:, :ch]
+
+                n_take = min(frames - pos, data.shape[0])
+                outdata[pos : pos + n_take] = data[:n_take]
+                pos += n_take
+                if data.shape[0] > n_take:
+                    self._carry_buf = data[n_take:].copy()
+
+            self._total_frames += frames
 
         try:
             self._stream = sd.OutputStream(
