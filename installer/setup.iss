@@ -2,7 +2,7 @@
 ; Requires Inno Setup 6.2+ (https://jrsoftware.org/isinfo.php)
 
 #define MyAppName "NPU Audio Enhancer"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "3.0.0"
 #define MyAppPublisher "NPU-AI"
 #define MyAppURL "https://github.com/mj2cvqj7ct-creator/NPU-AI"
 #define MyAppExeName "NPU_Audio_Enhancer.exe"

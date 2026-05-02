@@ -54,7 +54,8 @@ class SpatialProcessor:
         self._allpass_coeffs: list[tuple[float, int]] = []
         self._allpass_buffers_l: list[np.ndarray] = []
         self._allpass_buffers_r: list[np.ndarray] = []
-        self._allpass_indices: list[int] = []
+        self._allpass_indices_l: list[int] = []
+        self._allpass_indices_r: list[int] = []
 
         # Mid-side processing state
         self._prev_mid_rms = 0.0

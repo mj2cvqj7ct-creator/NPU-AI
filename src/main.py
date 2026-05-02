@@ -28,7 +28,7 @@ def main() -> int:
     """Application entry point."""
     setup_logging()
     logger = logging.getLogger(__name__)
-    logger.info("Starting NPU Audio Enhancer v1.0")
+    logger.info("Starting NPU Audio Enhancer v3.0")
 
     try:
         from PyQt6.QtGui import QFont
@@ -42,7 +42,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("NPU Audio Enhancer")
     app.setOrganizationName("NPU-AI")
-    app.setApplicationVersion("1.0.0")
+    app.setApplicationVersion("3.0.0")
 
     font = QFont("Segoe UI", 10)
     app.setFont(font)
