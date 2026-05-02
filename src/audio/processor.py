@@ -172,9 +172,13 @@ class AudioProcessor:
 
         if self.config.enable_spatial:
             audio = self._spatial.process(audio)
+        else:
+            self._spatial.reset_streaming_state()
 
         if self.config.enable_depth:
             audio = self._depth.process(audio)
+        else:
+            self._depth.reset_streaming_state()
 
         audio = audio * self._master_gain
         audio = self._limit_output(audio)

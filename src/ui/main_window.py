@@ -426,6 +426,12 @@ class MainWindow(QMainWindow):
         proc.config.enable_noise_reduction = bool(
             self._noise_panel.get_params().get("enabled", False),
         )
+        proc.config.enable_spatial = bool(
+            self._spatial_panel.get_params().get("enabled", True),
+        )
+        proc.config.enable_depth = bool(
+            self._depth_panel.get_params().get("enabled", True),
+        )
 
     def _schedule_deferred_rate_refresh(self) -> None:
         """Re-run rate labels after WASAPI mix rate is set (single-shot, cancellable)."""
@@ -485,6 +491,7 @@ class MainWindow(QMainWindow):
     @pyqtSlot(dict)
     def _on_spatial_changed(self, params: dict) -> None:
         if self._app:
+            self._app.processor.config.enable_spatial = params.get("enabled", True)
             spatial = self._app.processor.spatial
             spatial.enabled = params.pop("enabled", True)
             spatial.update_parameters(**params)
@@ -499,6 +506,14 @@ class MainWindow(QMainWindow):
             sep.config.instrument_clarity = params.get("instrument_clarity", 0.5)
             sep.config.bass_enhance = params.get("bass_enhance", 0.2)
             sep.config.drum_punch = params.get("drum_punch", 0.2)
+
+    @pyqtSlot(dict)
+    def _on_depth_changed(self, params: dict) -> None:
+        if self._app:
+            self._app.processor.config.enable_depth = params.get("enabled", True)
+            depth = self._app.processor.depth
+            depth.enabled = params.pop("enabled", True)
+            depth.update_parameters(**params)
 
     @pyqtSlot(dict)
     def _on_noise_reducer_changed(self, params: dict) -> None:
@@ -522,13 +537,6 @@ class MainWindow(QMainWindow):
                 k: v for k, v in params.items() if k != "enabled"
             })
             self._app.processor.enhancer.enabled = params.get("enabled", True)
-
-    @pyqtSlot(dict)
-    def _on_depth_changed(self, params: dict) -> None:
-        if self._app:
-            depth = self._app.processor.depth
-            depth.enabled = params.pop("enabled", True)
-            depth.update_parameters(**params)
 
     @pyqtSlot()
     def _on_optimize_dac(self) -> None:

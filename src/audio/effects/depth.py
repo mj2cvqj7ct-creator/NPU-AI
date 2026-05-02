@@ -82,6 +82,14 @@ class DepthProcessor:
         else:
             self._air_absorption_sos = None
 
+    def reset_streaming_state(self) -> None:
+        """Clear delay/reverb tails and filter zi when depth stage is pipeline-bypassed."""
+        self._build_filters()
+        self._predelay_buf_l[:] = 0.0
+        self._predelay_buf_r[:] = 0.0
+        self._predelay_idx = 0
+        self._reverb.reset_streaming_state()
+
     def process(self, audio: np.ndarray) -> np.ndarray:
         if not self.enabled or audio.shape[0] == 0:
             return audio
@@ -264,6 +272,18 @@ class FDNReverb:
             [0.5 + i * 0.13 for i in range(n_lines)], dtype=np.float64,
         )
         self._mod_depth = 3  # samples
+
+    def reset_streaming_state(self) -> None:
+        """Zero FDN delay lines and modulation (call when bypassing depth/reverb)."""
+        for buf in self._buffers:
+            buf[:] = 0.0
+        self._indices = [0] * len(self._delays)
+        self._lp_state = [0.0] * len(self._delays)
+        self._hp_state = [0.0] * len(self._delays)
+        self._mod_phase[:] = 0.0
+        for ap_buf in self._ap_buffers:
+            ap_buf[:] = 0.0
+        self._ap_indices = [0] * len(self._delays)
 
     @staticmethod
     def _hadamard(n: int) -> np.ndarray:

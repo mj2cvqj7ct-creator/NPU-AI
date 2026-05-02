@@ -71,6 +71,10 @@ class SpatialProcessor:
         if changed:
             self._build_filters()
 
+    def reset_streaming_state(self) -> None:
+        """Re-init FIR overlap, IIR zi, and allpass rings when spatial is pipeline-bypassed."""
+        self._build_filters()
+
     # ------------------------------------------------------------------
     # Filter generation
     # ------------------------------------------------------------------
