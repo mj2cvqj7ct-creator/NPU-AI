@@ -101,7 +101,7 @@ def run_cmd(
     """Run a command and stream output."""
     cmd_list = cmd.split() if isinstance(cmd, str) else cmd
     try:
-        result = subprocess.run(cmd_list, cwd=cwd, timeout=600)
+        result = subprocess.run(cmd_list, cwd=cwd, timeout=600, check=False)
         if check and result.returncode != 0:
             print(f"[ERROR] Command failed with exit code {result.returncode}")
             return result.returncode
@@ -138,13 +138,14 @@ def get_project_dir() -> str:
     if is_project_root(cwd):
         return cwd
 
-    for i, arg in enumerate(sys.argv[1:], 1):
+    argv = sys.argv[1:]
+    for i, arg in enumerate(argv):
         if arg.startswith("--project-dir="):
             candidate = arg.split("=", 1)[1]
             if is_project_root(candidate):
                 return candidate
-        elif arg == "--project-dir" and i < len(sys.argv) - 1:
-            candidate = sys.argv[i + 1]
+        elif arg == "--project-dir" and i + 1 < len(argv):
+            candidate = argv[i + 1]
             if is_project_root(candidate):
                 return candidate
 
@@ -183,7 +184,7 @@ def ensure_venv(project_dir: str) -> tuple[str, str, str]:
             print(f"[INFO] Using system Python: {python_cmd}")
         else:
             python_cmd = sys.executable
-        rc = run_cmd([python_cmd, "-m", "venv", "venv"])
+        rc = run_cmd([python_cmd, "-m", "venv", "venv"], cwd=project_dir)
         if rc != 0:
             print("[ERROR] Failed to create virtual environment")
             input("Press Enter to exit...")
