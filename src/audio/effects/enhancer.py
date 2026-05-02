@@ -90,7 +90,7 @@ class AudioEnhancer:
             end = min(i + fft_size, fft_size)
             denom[i:end] += w[: end - i] ** 2
         denom = np.maximum(denom, 1e-8)
-        return (w / denom[:fft_size]).astype(np.float32)
+        return np.asarray(w / denom[:fft_size], dtype=np.float32)
 
     def _reset_npu_ola_state(self) -> None:
         self._ola_buf = None
@@ -333,7 +333,7 @@ class AudioEnhancer:
         avg_lufs = np.mean(self._lufs_history)
 
         gain_db = np.clip(self.loudness_target - avg_lufs, -6.0, 6.0)
-        return audio * (10 ** (gain_db / 20.0))
+        return np.asarray(audio * (10 ** (gain_db / 20.0)), dtype=np.float32)
 
     def update_parameters(self, **kwargs: object) -> None:
         prev_blend = self.npu_blend

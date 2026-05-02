@@ -12,6 +12,7 @@ import os
 import threading
 import time
 from math import gcd
+from typing import Any
 
 import numpy as np
 from scipy import signal
@@ -40,7 +41,7 @@ class AudioEnhancerApp:
                                     Recommendation Engine
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         logger.info("Initializing NPU Audio Enhancer...")
 
         from src.npu.models import default_model_dir
@@ -59,7 +60,7 @@ class AudioEnhancerApp:
         self._processing_thread: threading.Thread | None = None
         self._is_running = False
         self._latest_audio: np.ndarray | None = None
-        self._latest_viz_data: dict | None = None
+        self._latest_viz_data: dict[str, Any] | None = None
         self._lock = threading.Lock()
         self._last_output_underrun_count = 0
         self._render_signature: str | None = None
@@ -180,7 +181,7 @@ class AudioEnhancerApp:
         """Apply XMOS/DAC buffer and device settings to the playback stream."""
         self._output.apply_config(self._build_output_config())
 
-    def apply_dac_settings_from_ui(self, ui: dict) -> None:
+    def apply_dac_settings_from_ui(self, ui: dict[str, Any]) -> None:
         """Apply DAC panel values (rates, buffers, exclusive) and sync output."""
         from src.dac.xmos_controller import (
             BitDepth,
@@ -257,7 +258,7 @@ class AudioEnhancerApp:
         return self._recommender
 
     @property
-    def output_stats(self) -> dict:
+    def output_stats(self) -> dict[str, int | bool]:
         return self._output.stats
 
     def pipeline_rate_info(self) -> dict[str, int | bool]:
@@ -373,7 +374,7 @@ class AudioEnhancerApp:
         except Exception as e:
             logger.debug("Recommendation update error: %s", e)
 
-    def get_visualization_data(self) -> dict | None:
+    def get_visualization_data(self) -> dict[str, Any] | None:
         """Get latest visualization data for the UI."""
         with self._lock:
             return self._latest_viz_data

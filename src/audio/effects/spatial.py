@@ -48,7 +48,7 @@ class SpatialProcessor:
         self._zi_crossfeed_hi_l = None
         self._zi_crossfeed_hi_r = None
         self._zi_height: list[Any] | None = None
-        self._zi_holo: list[list | None] = []
+        self._zi_holo: list[list[Any] | None] = []
         self._overlap_l = np.zeros(0, dtype=np.float32)
         self._overlap_r = np.zeros(0, dtype=np.float32)
 
@@ -400,7 +400,7 @@ class SpatialProcessor:
         )
         zi_state[ch_idx] = zi
         gain = 1.0 + self.height * 0.2
-        return data + (filtered - data) * self.height * 0.5 * gain
+        return np.asarray(data + (filtered - data) * self.height * 0.5 * gain, dtype=np.float32)
 
     def _apply_allpass(self, data: np.ndarray, is_left: bool) -> np.ndarray:
         """Schroeder allpass diffuser chain for spatial thickening."""

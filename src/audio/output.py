@@ -11,12 +11,9 @@ import logging
 import queue
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +130,12 @@ class AudioOutput:
 
         device = self._find_output_device()
 
-        def output_callback(outdata: np.ndarray, frames: int, time_info, status) -> None:
+        def output_callback(
+            outdata: np.ndarray,
+            frames: int,
+            time_info: Any,
+            status: Any,
+        ) -> None:
             if status:
                 logger.debug("Output status: %s", status)
                 if status.output_underflow:
@@ -234,7 +236,7 @@ class AudioOutput:
         self._muted = value
 
     @property
-    def stats(self) -> dict:
+    def stats(self) -> dict[str, int | bool]:
         return {
             "total_frames": self._total_frames,
             "underrun_count": self._underrun_count,
@@ -243,7 +245,7 @@ class AudioOutput:
         }
 
     @staticmethod
-    def list_output_devices() -> list[dict]:
+    def list_output_devices() -> list[dict[str, Any]]:
         """List available audio output devices."""
         try:
             import sounddevice as sd

@@ -80,7 +80,7 @@ def main() -> int:
         window.show()
     logger.info("Application window ready")
 
-    return app.exec()
+    return int(app.exec())
 
 
 if __name__ == "__main__":

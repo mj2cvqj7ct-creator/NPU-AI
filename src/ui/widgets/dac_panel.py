@@ -8,8 +8,10 @@ triple-buffering, and buffer health monitoring.
 
 from __future__ import annotations
 
+from typing import Any
+
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QPainter, QPaintEvent, QRadialGradient
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -28,7 +30,7 @@ from src.dac.xmos_controller import BitDepth, DACFilter, DACStatus, SampleRate
 class DACStatusIndicator(QWidget):
     """LED-style status indicator for DAC connection."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFixedSize(16, 16)
         self._status = DACStatus.DISCONNECTED
@@ -43,9 +45,7 @@ class DACStatusIndicator(QWidget):
         self._status = status
         self.update()
 
-    def paintEvent(self, event) -> None:
-        from PyQt6.QtGui import QPainter, QRadialGradient
-
+    def paintEvent(self, event: QPaintEvent | None) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -68,7 +68,7 @@ class DACControlPanel(QGroupBox):
     optimize_requested = pyqtSignal()
     loopback_resync_requested = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("SABAJ A20D ES9038PRO USB DAC", parent)
 
         layout = QVBoxLayout(self)
@@ -235,7 +235,7 @@ class DACControlPanel(QGroupBox):
     def _emit_config(self) -> None:
         self.config_changed.emit(self.get_config())
 
-    def get_config(self) -> dict:
+    def get_config(self) -> dict[str, Any]:
         return {
             "sample_rate": self._sample_rate.currentData(),
             "bit_depth": self._bit_depth.currentData(),
@@ -246,7 +246,7 @@ class DACControlPanel(QGroupBox):
             "dac_filter": self._dac_filter.currentData(),
         }
 
-    def update_status(self, status_info: dict) -> None:
+    def update_status(self, status_info: dict[str, Any]) -> None:
         """Update DAC status display."""
         status = DACStatus(status_info.get("status", "disconnected"))
         self._status_led.set_status(status)
@@ -299,7 +299,7 @@ class DACControlPanel(QGroupBox):
             f"NPU: {npu_ms:.1f}ms (peak: {npu_peak:.1f}ms)"
         )
 
-    def show_optimization_result(self, settings: dict) -> None:
+    def show_optimization_result(self, settings: dict[str, Any]) -> None:
         """Display NPU optimization results."""
         for w in (self._buffer_size, self._latency):
             w.blockSignals(True)

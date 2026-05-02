@@ -7,6 +7,8 @@ with interactive controls for the deep learning recommendation engine.
 
 from __future__ import annotations
 
+from typing import Any
+
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QGroupBox,
@@ -24,7 +26,7 @@ from PyQt6.QtWidgets import (
 class PreferenceBar(QWidget):
     """Individual preference bar for feature visualization."""
 
-    def __init__(self, name: str, parent=None):
+    def __init__(self, name: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 1, 0, 1)
@@ -61,7 +63,7 @@ class RecommenderPanel(QGroupBox):
     track_liked = pyqtSignal()
     track_skipped = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("AI Recommendations", parent)
 
         layout = QVBoxLayout(self)
@@ -106,13 +108,13 @@ class RecommenderPanel(QGroupBox):
         self._learning_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._learning_label)
 
-    def update_preferences(self, profile: dict) -> None:
+    def update_preferences(self, profile: dict[str, float]) -> None:
         """Update preference profile display."""
         for name, value in profile.items():
             if name in self._preference_bars:
                 self._preference_bars[name].set_value(value)
 
-    def update_recommendations(self, recommendations: list[dict]) -> None:
+    def update_recommendations(self, recommendations: list[dict[str, Any]]) -> None:
         """Update recommendation list."""
         self._rec_list.clear()
         for rec in recommendations:

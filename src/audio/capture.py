@@ -349,7 +349,12 @@ class WASAPICapture:
         """Sounddevice fallback capture loop."""
         import sounddevice as sd
 
-        def audio_callback(indata: np.ndarray, frames: int, time_info, status) -> None:
+        def audio_callback(
+            indata: np.ndarray,
+            frames: int,
+            time_info: Any,
+            status: Any,
+        ) -> None:
             if status:
                 logger.debug("Sounddevice status: %s", status)
             audio_copy = indata.copy()
@@ -405,7 +410,7 @@ class WASAPICapture:
         return self._is_capturing
 
     @staticmethod
-    def list_devices() -> list[dict]:
+    def list_devices() -> list[dict[str, Any]]:
         """List available audio capture devices."""
         try:
             import sounddevice as sd

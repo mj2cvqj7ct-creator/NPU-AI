@@ -11,6 +11,8 @@ Creates convincing front-to-back depth and 3D soundstage through:
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from scipy import signal
 
@@ -35,8 +37,8 @@ class DepthProcessor:
         self._early_reflections = EarlyReflections(sample_rate)
         self._distance_sos: np.ndarray | None = None
         self._air_absorption_sos: np.ndarray | None = None
-        self._zi_dist: list = []
-        self._zi_air: list = []
+        self._zi_dist: list[Any] = []
+        self._zi_air: list[Any] = []
 
         # Pre-delay buffer
         self._predelay_buf_l = np.zeros(

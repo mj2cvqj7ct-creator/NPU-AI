@@ -34,6 +34,7 @@ dev = [
     "pytest>=8.0",
     "black>=24.0",
     "ruff>=0.2.0",
+    "PyQt6-stubs>=20250731",
 ]
 
 [project.scripts]
@@ -59,7 +60,8 @@ line-length = 100
 target-version = ["py311"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 ignore_missing_imports = true
 warn_unused_ignores = true
 check_untyped_defs = false
+strict = true

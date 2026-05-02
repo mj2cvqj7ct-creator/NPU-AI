@@ -108,7 +108,7 @@ class SourceSeparator:
             end = min(i + fft_size, fft_size)
             denom[i:end] += w[:end - i] ** 2
         denom = np.maximum(denom, 1e-8)
-        return w / denom[:fft_size]
+        return np.asarray(w / denom[:fft_size], dtype=np.float32)
 
     # ------------------------------------------------------------------
     # Filter creation
@@ -207,7 +207,7 @@ class SourceSeparator:
             estimate = target_mag * mask
             denom = estimate ** 2 + (mixture_mag - estimate) ** 2 + 1e-10
             mask = estimate ** 2 / denom
-        return np.clip(mask, 0.0, 1.0)
+        return np.asarray(mask, dtype=np.float64)
 
     # ------------------------------------------------------------------
     # Processing

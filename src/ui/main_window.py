@@ -9,10 +9,10 @@ audio processing controls.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot
-from PyQt6.QtGui import QAction, QFont
+from PyQt6.QtGui import QAction, QCloseEvent, QFont
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -80,6 +80,11 @@ class MainWindow(QMainWindow):
         self._start_mm_notification()
         QTimer.singleShot(0, self._on_startup_idle_probe)
 
+    def _status_message(self, message: str, timeout: int = 0) -> None:
+        bar = self.statusBar()
+        if bar is not None:
+            bar.showMessage(message, timeout)
+
     @pyqtSlot()
     def _on_startup_idle_probe(self) -> None:
         """Prime Pipeline/Rates from Windows default mix before first Start."""
@@ -114,7 +119,7 @@ class MainWindow(QMainWindow):
             changed = self._app.sync_render_endpoint_if_changed()
             if changed:
                 label = ", ".join(sorted(reasons)) if reasons else "device"
-                self.statusBar().showMessage(
+                self._status_message(
                     f"Audio device updated ({label}) — capture resynced",
                     5000,
                 )
@@ -340,25 +345,30 @@ class MainWindow(QMainWindow):
     def _setup_menu(self) -> None:
         """Setup application menu bar."""
         menu_bar = self.menuBar()
+        assert menu_bar is not None
 
         file_menu = menu_bar.addMenu("File")
+        assert file_menu is not None
         exit_action = QAction("Exit", self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
         view_menu = menu_bar.addMenu("View")
+        assert view_menu is not None
         self._always_on_top = QAction("Always on Top", self)
         self._always_on_top.setCheckable(True)
         self._always_on_top.triggered.connect(self._toggle_always_on_top)
         view_menu.addAction(self._always_on_top)
 
         help_menu = menu_bar.addMenu("Help")
+        assert help_menu is not None
         about_action = QAction("About", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
 
         audio_menu = menu_bar.addMenu("Audio")
+        assert audio_menu is not None
         resync_action = QAction("Resync loopback…", self)
         resync_action.setShortcut("Ctrl+Shift+R")
         resync_action.setStatusTip(
@@ -450,13 +460,13 @@ class MainWindow(QMainWindow):
             if playing:
                 self._app.start_processing()
                 self._master_bar.set_status("Processing...")
-                self.statusBar().showMessage("Audio processing active")
+                self._status_message("Audio processing active")
                 self._refresh_rates_after_capture_restart()
             else:
                 self._rate_defer_timer.stop()
                 self._app.stop_processing()
                 self._master_bar.set_status("Stopped")
-                self.statusBar().showMessage("Audio processing stopped")
+                self._status_message("Audio processing stopped")
                 self._update_pipeline_rate_labels()
 
     @pyqtSlot()
@@ -466,13 +476,13 @@ class MainWindow(QMainWindow):
         if not self._master_bar.is_playing:
             self._app.refresh_loopback_probe_idle()
             self._update_pipeline_rate_labels()
-            self.statusBar().showMessage(
+            self._status_message(
                 "Loopback mix re-probed (idle) — Pipeline/Rates updated",
                 4000,
             )
             return
         self._app.force_resync_loopback_capture()
-        self.statusBar().showMessage(
+        self._status_message(
             "Loopback capture resynced (manual)",
             4000,
         )
@@ -489,7 +499,7 @@ class MainWindow(QMainWindow):
             self._app.processor.master_gain = volume
 
     @pyqtSlot(dict)
-    def _on_spatial_changed(self, params: dict) -> None:
+    def _on_spatial_changed(self, params: dict[str, Any]) -> None:
         if self._app:
             p = dict(params)
             self._app.processor.config.enable_spatial = p.get("enabled", True)
@@ -498,7 +508,7 @@ class MainWindow(QMainWindow):
             spatial.update_parameters(**p)
 
     @pyqtSlot(dict)
-    def _on_separation_changed(self, params: dict) -> None:
+    def _on_separation_changed(self, params: dict[str, Any]) -> None:
         if self._app:
             self._app.processor.config.enable_separation = params.get("enabled", True)
             sep = self._app.processor.separator
@@ -509,7 +519,7 @@ class MainWindow(QMainWindow):
             sep.config.drum_punch = params.get("drum_punch", 0.2)
 
     @pyqtSlot(dict)
-    def _on_depth_changed(self, params: dict) -> None:
+    def _on_depth_changed(self, params: dict[str, Any]) -> None:
         if self._app:
             p = dict(params)
             self._app.processor.config.enable_depth = p.get("enabled", True)
@@ -518,7 +528,7 @@ class MainWindow(QMainWindow):
             depth.update_parameters(**p)
 
     @pyqtSlot(dict)
-    def _on_noise_reducer_changed(self, params: dict) -> None:
+    def _on_noise_reducer_changed(self, params: dict[str, Any]) -> None:
         if self._app:
             self._app.processor.config.enable_noise_reduction = params.get(
                 "enabled", False,
@@ -530,7 +540,7 @@ class MainWindow(QMainWindow):
             })
 
     @pyqtSlot(dict)
-    def _on_enhancer_changed(self, params: dict) -> None:
+    def _on_enhancer_changed(self, params: dict[str, Any]) -> None:
         if self._app:
             self._app.processor.config.enable_enhancement = params.get(
                 "enabled", True,
@@ -549,7 +559,7 @@ class MainWindow(QMainWindow):
             self._refresh_rates_after_capture_restart()
 
     @pyqtSlot(dict)
-    def _on_dac_config_changed(self, config: dict) -> None:
+    def _on_dac_config_changed(self, config: dict[str, Any]) -> None:
         if self._app:
             self._app.apply_dac_settings_from_ui(config)
             self._refresh_rates_after_capture_restart()
@@ -582,7 +592,7 @@ class MainWindow(QMainWindow):
         if not self._app or not self._master_bar.is_playing:
             return
         if self._app.sync_render_endpoint_if_changed():
-            self.statusBar().showMessage(
+            self._status_message(
                 "Default playback device or format changed — capture resynced",
                 4000,
             )
@@ -707,7 +717,7 @@ class MainWindow(QMainWindow):
             "<p>Powered by ONNX Runtime + DirectML on Snapdragon X NPU</p>",
         )
 
-    def update_npu_status(self, info: dict) -> None:
+    def update_npu_status(self, info: dict[str, Any]) -> None:
         """Update NPU status display from app controller."""
         if info.get("is_npu"):
             self._npu_status_label.setText("NPU: Active")
@@ -719,7 +729,9 @@ class MainWindow(QMainWindow):
                 f"NPU: {info.get('provider', 'N/A')}"
             )
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, event: QCloseEvent | None) -> None:
+        if event is None:
+            return
         self._mm_debounce_timer.stop()
         self._rate_defer_timer.stop()
         self._mm_pending_reasons.clear()

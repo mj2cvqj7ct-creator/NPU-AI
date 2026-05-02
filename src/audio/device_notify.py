@@ -48,7 +48,7 @@ def start_render_endpoint_notifier(schedule: ScheduleFn) -> NotificationHandle |
         logger.debug("pycaw not available; MMDevice notifications disabled")
         return None
 
-    class _Client(MMNotificationClient):
+    class _Client(MMNotificationClient):  # type: ignore[misc]
         """eRender == flow_id 0 (pycaw DataFlow order)."""
 
         def __init__(self, fire: ScheduleFn) -> None:
