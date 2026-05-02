@@ -39,7 +39,7 @@ class AudioProfile:
 GENRE_RULES: list[tuple[str, str, dict[str, tuple[float, float]]]] = [
     (
         "Electronic/EDM",
-        "Electronic/EDM",
+        "Electronic / EDM",
         {
             "bass_energy_ratio": (0.35, 1.0),
             "crest_factor": (1.0, 6.0),
@@ -48,7 +48,7 @@ GENRE_RULES: list[tuple[str, str, dict[str, tuple[float, float]]]] = [
     ),
     (
         "Classical/Orchestra",
-        "Classical/Orchestra",
+        "Classical / Orchestra",
         {
             "dynamic_range_db": (15.0, 80.0),
             "crest_factor": (6.0, 30.0),

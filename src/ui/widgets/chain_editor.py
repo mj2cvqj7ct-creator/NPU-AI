@@ -177,6 +177,7 @@ class EffectChainEditor(QWidget):
         """Restore default effect order."""
         for item in self._items:
             self._chain_layout.removeWidget(item)
+            item.deleteLater()
 
         self._items.clear()
         for name, display, color in self.DEFAULT_CHAIN:
