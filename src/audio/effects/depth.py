@@ -26,7 +26,9 @@ class DepthProcessor:
         self.depth_amount = 0.5
         self.room_size = 0.4
         self.damping = 0.5
+        self.damp_lo = 0.3
         self.diffusion = 0.7
+        self.modulation_depth = 0.3
         self.pre_delay_ms = 15.0
         self.early_reflection_mix = 0.3
         self.late_reverb_mix = 0.2
@@ -113,6 +115,7 @@ class DepthProcessor:
         # 5. Late reverb (enhanced FDN)
         reverb = self._reverb.process(
             wet, self.room_size, self.damping, self.diffusion,
+            damp_lo=self.damp_lo, modulation_depth=self.modulation_depth,
         )
 
         # 6. Mix with depth-dependent gains
@@ -278,6 +281,8 @@ class FDNReverb:
         room_size: float = 0.5,
         damping: float = 0.5,
         diffusion: float = 0.7,
+        damp_lo: float = 0.3,
+        modulation_depth: float = 0.3,
     ) -> np.ndarray:
         if audio.ndim == 2:
             mono = np.mean(audio, axis=1)
@@ -287,7 +292,7 @@ class FDNReverb:
         n = len(mono)
         n_lines = len(self._delays)
         feedback = 0.6 + room_size * 0.35
-        damp_lo = damping * 0.4
+        damp_lo_val = damping * (0.2 + damp_lo * 0.4)
         damp_hi = damping * 0.15
 
         out_l = np.zeros(n, dtype=np.float64)
@@ -298,8 +303,9 @@ class FDNReverb:
             taps = np.zeros(n_lines, dtype=np.float64)
             for i, delay in enumerate(self._delays):
                 # Modulated read position
+                mod_samples = int(3 + modulation_depth * 7)
                 mod = int(
-                    self._mod_depth
+                    mod_samples
                     * np.sin(self._mod_phase[i])
                     * diffusion,
                 )
@@ -326,7 +332,7 @@ class FDNReverb:
             # Write back with allpass diffusion, feedback, and damping
             for i, delay in enumerate(self._delays):
                 # Two-band damping (low-shelf + high-shelf)
-                lp = mixed[i] * (1.0 - damp_lo) + self._lp_state[i] * damp_lo
+                lp = mixed[i] * (1.0 - damp_lo_val) + self._lp_state[i] * damp_lo_val
                 self._lp_state[i] = lp
 
                 hp = lp - self._hp_state[i] * damp_hi

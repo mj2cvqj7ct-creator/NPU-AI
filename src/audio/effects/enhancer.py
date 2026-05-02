@@ -29,6 +29,9 @@ class AudioEnhancer:
         self.exciter = 0.2
         self.stereo_width = 0.0
         self.loudness_target = -14.0  # LUFS
+        self.transient_shape = 0.0
+        self.psychoacoustic_bass = 0.3
+        self.multiband_compression = 0.3
 
         self._build_processing_chain()
 
@@ -104,19 +107,24 @@ class AudioEnhancer:
             return audio
 
         # 1. Psychoacoustic bass
-        if self.bass_boost > 0:
-            audio = self._bass_enhancer.process(audio, self.bass_boost)
+        bass_amount = self.bass_boost + self.psychoacoustic_bass * 0.5
+        if bass_amount > 0:
+            audio = self._bass_enhancer.process(audio, bass_amount)
 
         # 2. Multi-band EQ
         audio = self._apply_multiband_eq(audio)
 
         # 3. Transient shaping
+        self._transient_shaper.attack_gain = 0.15 + self.transient_shape * 0.35
+        self._transient_shaper.sustain_gain = max(0.0, -self.transient_shape * 0.2)
         audio = self._transient_shaper.process(audio)
 
         # 4. Harmonic exciter
         audio = self._harmonic.process(audio)
 
         # 5. Multi-band compression
+        self._dynamics.threshold_db = -18.0 - self.multiband_compression * 6.0
+        self._dynamics.ratio = 3.0 + self.multiband_compression * 3.0
         audio = self._dynamics.process(audio)
 
         # 6. Stereo width adjustment
