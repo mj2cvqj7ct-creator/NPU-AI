@@ -347,11 +347,11 @@ class MainWindow(QMainWindow):
         help_menu.addAction(about_action)
 
         audio_menu = menu_bar.addMenu("Audio")
-        resync_action = QAction("Resync loopback capture…", self)
+        resync_action = QAction("Resync loopback…", self)
         resync_action.setShortcut("Ctrl+Shift+R")
         resync_action.setStatusTip(
-            "Re-probe default playback mix and restart WASAPI loopback "
-            "(use if sound dropped after a driver change)",
+            "Re-probe Windows mix: restarts capture if processing, "
+            "otherwise refreshes idle Pipeline/Rates",
         )
         resync_action.triggered.connect(self._on_resync_loopback)
         audio_menu.addAction(resync_action)
@@ -415,14 +415,12 @@ class MainWindow(QMainWindow):
                 self._app.start_processing()
                 self._master_bar.set_status("Processing...")
                 self.statusBar().showMessage("Audio processing active")
-                self._dac_panel.set_loopback_resync_enabled(True)
                 self._refresh_rates_after_capture_restart()
             else:
                 self._rate_defer_timer.stop()
                 self._app.stop_processing()
                 self._master_bar.set_status("Stopped")
                 self.statusBar().showMessage("Audio processing stopped")
-                self._dac_panel.set_loopback_resync_enabled(False)
                 self._update_pipeline_rate_labels()
 
     @pyqtSlot()
@@ -430,8 +428,10 @@ class MainWindow(QMainWindow):
         if not self._app:
             return
         if not self._master_bar.is_playing:
+            self._app.refresh_loopback_probe_idle()
+            self._update_pipeline_rate_labels()
             self.statusBar().showMessage(
-                "Start processing first, then use Audio → Resync loopback",
+                "Loopback mix re-probed (idle) — Pipeline/Rates updated",
                 4000,
             )
             return

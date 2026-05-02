@@ -31,6 +31,7 @@ def main() -> int:
     logger.info("Starting NPU Audio Enhancer v1.0")
 
     try:
+        from PyQt6.QtCore import Qt
         from PyQt6.QtGui import QFont
         from PyQt6.QtWidgets import QApplication
     except ImportError:
@@ -38,6 +39,13 @@ def main() -> int:
             "PyQt6 is required. Install with: pip install PyQt6>=6.6.0"
         )
         return 1
+
+    try:
+        QApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough,
+        )
+    except Exception:
+        pass
 
     app = QApplication(sys.argv)
     app.setApplicationName("NPU Audio Enhancer")

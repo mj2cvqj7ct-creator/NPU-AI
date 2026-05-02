@@ -189,11 +189,11 @@ class DACControlPanel(QGroupBox):
             self.loopback_resync_requested.emit,
         )
         self._resync_loopback_btn.setToolTip(
-            "Re-probe Windows default playback mix and restart WASAPI loopback. "
-            "Use if capture dropped after a driver or default-device change. "
-            "Shortcut: Ctrl+Shift+R (requires processing started)."
+            "Re-probe Windows default playback mix and sync timing. "
+            "While processing: restarts WASAPI loopback. "
+            "While stopped: refreshes probe for Pipeline/Rates only. "
+            "Shortcut: Ctrl+Shift+R.",
         )
-        self._resync_loopback_btn.setEnabled(False)
 
         self._info_label = QLabel("")
         self._info_label.setObjectName("statusLabel")
@@ -216,9 +216,6 @@ class DACControlPanel(QGroupBox):
         health_row.addWidget(self._dropout_label)
         health_row.addWidget(self._npu_time_label)
         layout.addLayout(health_row)
-
-    def set_loopback_resync_enabled(self, enabled: bool) -> None:
-        self._resync_loopback_btn.setEnabled(enabled)
 
     def update_pipeline_rates(self, info: dict[str, int | bool]) -> None:
         """Show loopback vs output rates from AudioEnhancerApp.pipeline_rate_info()."""

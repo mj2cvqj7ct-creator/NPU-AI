@@ -133,6 +133,16 @@ class AudioEnhancerApp:
                 self._capture.stop()
                 self._capture.start()
 
+    def refresh_loopback_probe_idle(self) -> None:
+        """Re-probe default Windows mix and sync pipeline timing without capture I/O.
+
+        Use while processing is stopped to refresh Pipeline/Rates after external
+        audio routing changes.
+        """
+        with self._endpoint_sync_lock:
+            self._sync_pipeline_sample_rates()
+            self._sync_render_signature()
+
     def _sync_pipeline_sample_rates(self) -> None:
         """Align capture buffer and DSP sample rate with DAC output."""
         invalidate_default_render_endpoint_cache()
