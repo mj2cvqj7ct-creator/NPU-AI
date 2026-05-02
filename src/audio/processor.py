@@ -170,9 +170,11 @@ class AudioProcessor:
         audio = self._limit_output(audio)
 
         if self._ab_mode and dry is not None:
-            # Apply same master gain and limiter to dry path
+            # Limit dry path without affecting wet limiter envelope
+            saved_limiter = self._limiter_state
             dry = dry * self._master_gain
             dry = self._limit_output(dry)
+            self._limiter_state = saved_limiter
 
             target = 1.0 if self._ab_showing_dry else 0.0
             if abs(self._ab_position - target) > 1e-4:

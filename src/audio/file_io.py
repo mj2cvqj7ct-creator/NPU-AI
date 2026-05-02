@@ -1,7 +1,7 @@
 """
 Audio File I/O Module.
 
-Provides import/export for WAV and FLAC audio files with
+Provides import/export for WAV audio files with
 format conversion, metadata extraction, and progress reporting.
 """
 
@@ -33,8 +33,8 @@ class AudioFileInfo:
 class AudioFileIO:
     """Handles import/export of WAV and FLAC audio files."""
 
-    SUPPORTED_IMPORT = (".wav", ".flac")
-    SUPPORTED_EXPORT = (".wav", ".flac")
+    SUPPORTED_IMPORT = (".wav",)
+    SUPPORTED_EXPORT = (".wav",)
 
     @staticmethod
     def get_file_info(path: str) -> AudioFileInfo | None:
@@ -144,7 +144,7 @@ class AudioFileIO:
         bit_depth: int = 24,
         progress_callback: Callable[[float], None] | None = None,
     ) -> bool:
-        """Export audio data to WAV or FLAC file.
+        """Export audio data to WAV file.
 
         Returns True on success.
         """
@@ -164,8 +164,9 @@ class AudioFileIO:
             if bit_depth == 16:
                 data = np.clip(audio * 32768.0, -32768, 32767).astype(np.int16)
             elif bit_depth == 24:
-                # scipy wavfile writes int32 for 24-bit; scale to 24-bit range
-                data = np.clip(audio * 8388608.0, -8388608, 8388607).astype(np.int32)
+                # scipy wavfile stores as int32; scale to full int32 range
+                scaled = audio.astype(np.float64) * 2147483648.0
+                data = np.clip(scaled, -2147483648.0, 2147483647.0).astype(np.int32)
             elif bit_depth == 32:
                 data = audio.astype(np.float32)
             else:

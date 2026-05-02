@@ -90,6 +90,20 @@ class TestAudioFileIO:
         audio, _ = result
         assert audio.shape[0] == sample_audio.shape[0]
 
+    def test_roundtrip_24bit_preserves_amplitude(self, temp_dir, sample_audio):
+        path = os.path.join(temp_dir, "rt24.wav")
+        AudioFileIO.export_audio(sample_audio, path, sample_rate=48000, bit_depth=24)
+        result = AudioFileIO.import_audio(path, target_sample_rate=48000)
+        assert result is not None
+        audio, _ = result
+        # Amplitude should be close, not 256x too quiet
+        assert np.max(np.abs(audio)) > 0.1
+
+    def test_flac_not_supported(self, temp_dir, sample_audio):
+        path = os.path.join(temp_dir, "test.flac")
+        ok = AudioFileIO.export_audio(sample_audio, path)
+        assert ok is False
+
     def test_progress_callback(self, temp_dir, sample_audio):
         path = os.path.join(temp_dir, "progress.wav")
         progress_values = []

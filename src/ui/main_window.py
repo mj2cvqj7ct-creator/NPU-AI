@@ -562,7 +562,7 @@ class MainWindow(QMainWindow):
             self,
             "Import Audio File",
             "",
-            "Audio Files (*.wav *.flac);;WAV (*.wav);;FLAC (*.flac)",
+            "WAV Files (*.wav)",
         )
         if not path:
             return

@@ -89,3 +89,13 @@ class TestABCompare:
         audio = np.random.randn(480, 2).astype(np.float32) * 0.3
         result = processor.process(audio)
         np.testing.assert_array_equal(result, audio)
+
+    def test_ab_limiter_state_preserved(self, processor):
+        processor.ab_mode = True
+        audio = np.random.randn(480, 2).astype(np.float32) * 0.3
+        processor.process(audio.copy())
+        state_after_wet = processor._limiter_state
+        # Limiter state should reflect the wet signal, not the dry
+        processor.process(audio.copy())
+        # State should remain consistent (not corrupted by dry path)
+        assert abs(processor._limiter_state - state_after_wet) < 0.5
