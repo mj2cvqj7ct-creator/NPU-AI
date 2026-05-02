@@ -51,14 +51,15 @@ class DepthProcessor:
 
     def update_parameters(self, **kwargs: float) -> None:
         changed = False
+        skip = frozenset({"enabled", "sample_rate"})
         for key, value in kwargs.items():
+            if key in skip or key.startswith("_"):
+                continue
             if hasattr(self, key) and getattr(self, key) != value:
                 setattr(self, key, value)
                 changed = True
         if changed:
             self._build_filters()
-
-    def _build_filters(self) -> None:
         nyq = self.sample_rate / 2.0
 
         # Distance filter (HF rolloff)

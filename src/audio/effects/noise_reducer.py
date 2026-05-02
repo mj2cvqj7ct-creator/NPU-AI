@@ -70,7 +70,10 @@ class NPUNoiseReducer:
 
     def update_parameters(self, **kwargs: float) -> None:
         prev = self.npu_blend
+        skip = frozenset({"enabled"})
         for key, value in kwargs.items():
+            if key in skip or key.startswith("_"):
+                continue
             if hasattr(self, key):
                 setattr(self, key, value)
         if self.npu_blend <= 1e-5 and prev > 1e-5:

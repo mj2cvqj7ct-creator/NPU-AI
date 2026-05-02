@@ -64,7 +64,13 @@ class SpatialProcessor:
 
     def update_parameters(self, **kwargs: float) -> None:
         changed = False
+        skip = frozenset({"enabled", "sample_rate"})
         for key, value in kwargs.items():
+            if key in skip or key.startswith("_"):
+                continue
+            if key == "depth" and isinstance(value, (int, float)) and value > 100:
+                # Likely Hz mistaken for depth amount — ignore garbage from bad callers
+                continue
             if hasattr(self, key) and getattr(self, key) != value:
                 setattr(self, key, value)
                 changed = True

@@ -115,6 +115,8 @@ class AudioOutput:
         # Do not scale by self._volume here: the DSP pipeline applies master_gain;
         # scaling twice made the Master slider non-linear (gain²).
 
+        audio_data = np.ascontiguousarray(audio_data, dtype=np.float32)
+
         try:
             self._output_queue.put_nowait(audio_data)
         except queue.Full:
