@@ -134,9 +134,10 @@ class ExportQueue:
                     continue
                 job.status = ExportStatus.PROCESSING
             success = self._process_single(i, job)
-            job.status = (
-                ExportStatus.COMPLETED if success else ExportStatus.FAILED
-            )
+            with self._lock:
+                job.status = (
+                    ExportStatus.COMPLETED if success else ExportStatus.FAILED
+                )
 
             if self._on_complete:
                 self._on_complete(i, success)
