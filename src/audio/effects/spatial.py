@@ -62,14 +62,21 @@ class SpatialProcessor:
 
         self._build_filters()
 
+    _TUNABLE_KEYS = frozenset({
+        "soundstage_width",
+        "depth",
+        "height",
+        "holographic_intensity",
+        "crossfeed_level",
+        "center_focus",
+        "stereo_enhance",
+        "immersion",
+    })
+
     def update_parameters(self, **kwargs: float) -> None:
         changed = False
-        skip = frozenset({"enabled", "sample_rate"})
         for key, value in kwargs.items():
-            if key in skip or key.startswith("_"):
-                continue
-            if key == "depth" and isinstance(value, (int, float)) and value > 100:
-                # Likely Hz mistaken for depth amount — ignore garbage from bad callers
+            if key not in self._TUNABLE_KEYS:
                 continue
             if hasattr(self, key) and getattr(self, key) != value:
                 setattr(self, key, value)
