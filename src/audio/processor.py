@@ -163,7 +163,7 @@ class AudioProcessor:
         if self.config.enable_separation:
             audio = self._separator.process(audio)
         else:
-            self._separator.clear_stem_levels()
+            self._separator.reset_streaming_state()
 
         if self.config.enable_enhancement:
             audio = self._enhancer.process(audio)

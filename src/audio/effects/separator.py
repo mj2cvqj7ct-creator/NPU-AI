@@ -235,6 +235,19 @@ class SourceSeparator:
     def clear_stem_levels(self) -> None:
         self._last_stem_levels = {n: 0.0 for n in STEM_NAMES}
 
+    def reset_streaming_state(self) -> None:
+        """Clear HPSS history, Wiener accumulators, and STFT carry when pipeline-bypassed."""
+        self.clear_stem_levels()
+        fft = self.config.fft_size
+        nfreq = fft // 2 + 1
+        self._input_buffer = np.zeros((fft, 2), dtype=np.float32)
+        self._prev_phase = np.zeros((nfreq, 2), dtype=np.float64)
+        self._prev_magnitude = np.zeros((nfreq, 2), dtype=np.float64)
+        self._prev_energy = 0.0
+        self._prev_band_energy = np.zeros(4, dtype=np.float64)
+        self._wiener_accum = {name: None for name in STEM_NAMES}
+        self._spec_history = []
+
     def _npu_separate(self, audio: np.ndarray) -> dict[str, np.ndarray]:
         try:
             mono = np.mean(audio, axis=1)
