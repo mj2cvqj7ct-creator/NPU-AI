@@ -410,6 +410,23 @@ class MainWindow(QMainWindow):
         self._recommender_panel.track_liked.connect(self._on_track_liked)
         self._recommender_panel.track_skipped.connect(self._on_track_skipped)
 
+        self._sync_processor_stage_flags()
+
+    def _sync_processor_stage_flags(self) -> None:
+        """Align pipeline stage enables with current panel state (startup / consistency)."""
+        if not self._app:
+            return
+        proc = self._app.processor
+        proc.config.enable_separation = bool(
+            self._separation_panel.get_params().get("enabled", True),
+        )
+        proc.config.enable_enhancement = bool(
+            self._enhancer_panel.get_params().get("enabled", True),
+        )
+        proc.config.enable_noise_reduction = bool(
+            self._noise_panel.get_params().get("enabled", False),
+        )
+
     def _schedule_deferred_rate_refresh(self) -> None:
         """Re-run rate labels after WASAPI mix rate is set (single-shot, cancellable)."""
         self._rate_defer_timer.stop()
@@ -475,6 +492,7 @@ class MainWindow(QMainWindow):
     @pyqtSlot(dict)
     def _on_separation_changed(self, params: dict) -> None:
         if self._app:
+            self._app.processor.config.enable_separation = params.get("enabled", True)
             sep = self._app.processor.separator
             sep.config.enabled = params.get("enabled", True)
             sep.config.vocal_boost = params.get("vocal_boost", 0.3)
@@ -485,6 +503,9 @@ class MainWindow(QMainWindow):
     @pyqtSlot(dict)
     def _on_noise_reducer_changed(self, params: dict) -> None:
         if self._app:
+            self._app.processor.config.enable_noise_reduction = params.get(
+                "enabled", False,
+            )
             nr = self._app.processor.noise_reducer
             nr.enabled = params.get("enabled", False)
             nr.update_parameters(**{
@@ -494,6 +515,9 @@ class MainWindow(QMainWindow):
     @pyqtSlot(dict)
     def _on_enhancer_changed(self, params: dict) -> None:
         if self._app:
+            self._app.processor.config.enable_enhancement = params.get(
+                "enabled", True,
+            )
             self._app.processor.enhancer.update_parameters(**{
                 k: v for k, v in params.items() if k != "enabled"
             })

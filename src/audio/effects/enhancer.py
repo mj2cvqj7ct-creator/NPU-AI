@@ -27,7 +27,7 @@ class AudioEnhancer:
 
     def __init__(self, sample_rate: int = 48000):
         self.sample_rate = sample_rate
-        self.enabled = True
+        self._enhancer_enabled = True
         self.npu_blend = 0.35  # 0=DSP only, 1=full NPU spectral mix-in
         self._npu_engine: Any | None = None
 
@@ -51,6 +51,17 @@ class AudioEnhancer:
         self.loudness_target = -14.0  # LUFS
 
         self._build_processing_chain()
+
+    @property
+    def enabled(self) -> bool:
+        return self._enhancer_enabled
+
+    @enabled.setter
+    def enabled(self, value: bool) -> None:
+        v = bool(value)
+        if not v and self._enhancer_enabled:
+            self._reset_npu_ola_state()
+        self._enhancer_enabled = v
 
     def set_npu_engine(self, engine: object | None) -> None:
         self._npu_engine = engine
@@ -169,6 +180,10 @@ class AudioEnhancer:
         self._in_carry = buf
         return self._take_npu_fifo(audio.shape[0], n_ch, audio)
 
+    def reset_streaming_state(self) -> None:
+        """Clear overlap-add buffers (call when stage bypassed to avoid stale state)."""
+        self._reset_npu_ola_state()
+
     def _build_processing_chain(self) -> None:
         self._multiband = self._create_multiband_filters()
         self._harmonic = HarmonicExciter(self.sample_rate, self.exciter)
@@ -238,11 +253,13 @@ class AudioEnhancer:
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         if not self.enabled or audio.shape[0] == 0:
+            self._reset_npu_ola_state()
             return audio
 
         if audio.ndim == 1:
             audio = np.column_stack([audio, audio])
 
+        blend = float(np.clip(self.npu_blend, 0.0, 1.0))
         use_npu = blend > 1e-5 and self._npu_engine is not None
         x = audio.astype(np.float32, copy=False)
         if use_npu:

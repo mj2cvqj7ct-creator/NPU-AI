@@ -40,6 +40,7 @@ class ProcessorConfig:
     sample_rate: int = 48000
     channels: int = 2
     buffer_size: int = 480
+    enable_noise_reduction: bool = False
     enable_separation: bool = True
     enable_enhancement: bool = True
     enable_spatial: bool = True
@@ -154,7 +155,10 @@ class AudioProcessor:
 
         audio = self._normalize_input(audio)
 
-        audio = self._noise_reducer.process(audio)
+        if self.config.enable_noise_reduction:
+            audio = self._noise_reducer.process(audio)
+        else:
+            self._noise_reducer.reset_streaming_state()
 
         if self.config.enable_separation:
             audio = self._separator.process(audio)
@@ -163,6 +167,8 @@ class AudioProcessor:
 
         if self.config.enable_enhancement:
             audio = self._enhancer.process(audio)
+        else:
+            self._enhancer.reset_streaming_state()
 
         if self.config.enable_spatial:
             audio = self._spatial.process(audio)
