@@ -39,3 +39,52 @@ class TestAudioProcessor(unittest.TestCase):
         self.assertFalse(p.config.enable_spatial)
         self.assertFalse(p.spatial.enabled)
         self.assertFalse(p.depth.enabled)
+
+    def test_set_sample_rate_rejects_nonpositive(self) -> None:
+        p = self.AudioProcessor()
+        before = p.config.sample_rate
+        p.set_sample_rate(0)
+        self.assertEqual(p.config.sample_rate, before)
+        p.set_sample_rate(-48000)
+        self.assertEqual(p.config.sample_rate, before)
+
+    def test_process_mono_input_becomes_stereo(self) -> None:
+        p = self.AudioProcessor()
+        p.config.enable_noise_reduction = False
+        p.config.enable_separation = False
+        p.config.enable_enhancement = False
+        p.config.enable_spatial = False
+        p.config.enable_depth = False
+        x = np.full((128,), 0.05, dtype=np.float32)
+        y = p.process(x)
+        self.assertEqual(y.ndim, 2)
+        self.assertEqual(y.shape, (128, 2))
+        self.assertEqual(y.dtype, np.float32)
+
+    def test_visualization_empty_audio(self) -> None:
+        p = self.AudioProcessor()
+        d = p.get_visualization_data(np.zeros((0, 2), dtype=np.float32))
+        self.assertEqual(d["spectrum"], [])
+        self.assertEqual(d["waveform"], [])
+        self.assertEqual(d["stem_levels"], {})
+
+    def test_visualization_separation_off_yields_no_stems(self) -> None:
+        p = self.AudioProcessor()
+        p.config.enable_separation = False
+        x = np.random.randn(2048, 2).astype(np.float32) * 0.01
+        d = p.get_visualization_data(x)
+        self.assertEqual(d["stem_levels"], {})
+        self.assertGreater(len(d["spectrum"]), 0)
+        self.assertGreater(len(d["waveform"]), 0)
+
+    def test_bypass_toggle_invokes_pipeline_flush_flags(self) -> None:
+        p = self.AudioProcessor()
+        p.bypass = True
+        self.assertTrue(p._flush_pipeline_on_next_bypass_frame)
+        p.process(np.ones((32, 2), dtype=np.float32))
+        self.assertFalse(p._flush_pipeline_on_next_bypass_frame)
+
+        p.bypass = False
+        self.assertTrue(p._flush_pipeline_on_next_dsp_frame)
+        p.process(np.ones((32, 2), dtype=np.float32))
+        self.assertFalse(p._flush_pipeline_on_next_dsp_frame)
