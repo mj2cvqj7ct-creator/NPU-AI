@@ -62,6 +62,7 @@ class AudioEnhancerApp:
         self._lock = threading.Lock()
         self._last_output_underrun_count = 0
         self._render_signature: str | None = None
+        self._endpoint_sync_lock = threading.Lock()
 
         self._connect_components()
         logger.info("NPU Audio Enhancer initialized")
@@ -95,21 +96,22 @@ class AudioEnhancerApp:
 
         Call from UI timer while processing. Returns True if capture restarted.
         """
-        st = probe_default_render_endpoint_state()
-        if st is None:
-            return False
-        sig = self._render_sig_from_state(st)
-        if sig == self._render_signature:
-            return False
-        logger.info(
-            "Default render endpoint or mix format changed; restarting capture",
-        )
-        self._render_signature = sig
-        self._sync_pipeline_sample_rates()
-        if self._capture.is_capturing:
-            self._capture.stop()
-            self._capture.start()
-        return True
+        with self._endpoint_sync_lock:
+            st = probe_default_render_endpoint_state()
+            if st is None:
+                return False
+            sig = self._render_sig_from_state(st)
+            if sig == self._render_signature:
+                return False
+            logger.info(
+                "Default render endpoint or mix format changed; restarting capture",
+            )
+            self._render_signature = sig
+            self._sync_pipeline_sample_rates()
+            if self._capture.is_capturing:
+                self._capture.stop()
+                self._capture.start()
+            return True
 
     def _sync_pipeline_sample_rates(self) -> None:
         """Align capture buffer and DSP sample rate with DAC output."""

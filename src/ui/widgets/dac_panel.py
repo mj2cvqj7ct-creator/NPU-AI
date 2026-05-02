@@ -262,8 +262,14 @@ class DACControlPanel(QGroupBox):
 
     def show_optimization_result(self, settings: dict) -> None:
         """Display NPU optimization results."""
-        self._buffer_size.setValue(settings.get("buffer_size_ms", 10))
-        self._latency.setValue(settings.get("latency_ms", 5))
+        for w in (self._buffer_size, self._latency):
+            w.blockSignals(True)
+        try:
+            self._buffer_size.setValue(settings.get("buffer_size_ms", 10))
+            self._latency.setValue(settings.get("latency_ms", 5))
+        finally:
+            for w in (self._buffer_size, self._latency):
+                w.blockSignals(False)
         self._info_label.setText(
             f"Optimized: buffer={settings.get('buffer_size_ms')}ms, "
             f"latency={settings.get('latency_ms')}ms, "

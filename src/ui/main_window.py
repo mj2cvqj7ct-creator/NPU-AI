@@ -66,23 +66,36 @@ class MainWindow(QMainWindow):
         self._setup_timers()
         self._connect_signals()
         self._mm_notify: NotificationHandle | None = None
+        self._mm_pending_reasons: set[str] = set()
+        self._mm_debounce_timer = QTimer(self)
+        self._mm_debounce_timer.setSingleShot(True)
+        self._mm_debounce_timer.setInterval(350)
+        self._mm_debounce_timer.timeout.connect(self._flush_mm_resync)
         self._start_mm_notification()
 
     def _start_mm_notification(self) -> None:
         """Register MMDevice endpoint notifications (Windows)."""
 
         def schedule(reason: str) -> None:
-            QTimer.singleShot(0, lambda r=reason: self._on_mm_device_event(r))
+            QTimer.singleShot(0, lambda r=reason: self._arm_mm_debounce(r))
 
         self._mm_notify = start_render_endpoint_notifier(schedule)
 
-    @pyqtSlot(str)
-    def _on_mm_device_event(self, reason: str) -> None:
+    def _arm_mm_debounce(self, reason: str) -> None:
+        self._mm_pending_reasons.add(reason)
+        self._mm_debounce_timer.stop()
+        self._mm_debounce_timer.start()
+
+    @pyqtSlot()
+    def _flush_mm_resync(self) -> None:
+        reasons = self._mm_pending_reasons.copy()
+        self._mm_pending_reasons.clear()
         if not self._app or not self._master_bar.is_playing:
             return
         if self._app.sync_render_endpoint_if_changed():
+            label = ", ".join(sorted(reasons)) if reasons else "device"
             self.statusBar().showMessage(
-                f"Audio device updated ({reason}) — capture resynced",
+                f"Audio device updated ({label}) — capture resynced",
                 5000,
             )
 
