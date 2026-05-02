@@ -121,15 +121,18 @@ class ExportQueue:
 
     def _process_queue(self) -> None:
         """Process all pending jobs sequentially."""
-        for i, job in enumerate(self._jobs):
+        with self._lock:
+            jobs_snapshot = list(self._jobs)
+        for i, job in enumerate(jobs_snapshot):
             if self._stop_event.is_set():
-                job.status = ExportStatus.CANCELLED
+                with self._lock:
+                    job.status = ExportStatus.CANCELLED
                 continue
 
-            if job.status != ExportStatus.PENDING:
-                continue
-
-            job.status = ExportStatus.PROCESSING
+            with self._lock:
+                if job.status != ExportStatus.PENDING:
+                    continue
+                job.status = ExportStatus.PROCESSING
             success = self._process_single(i, job)
             job.status = (
                 ExportStatus.COMPLETED if success else ExportStatus.FAILED

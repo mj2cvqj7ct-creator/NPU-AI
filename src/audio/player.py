@@ -169,13 +169,14 @@ class AudioPlayer:
             if self._on_chunk:
                 self._on_chunk(chunk)
 
-            self._state.position_samples += self.chunk_size
+            actual_len = chunk.shape[0]
+            self._state.position_samples += actual_len
 
             if self._on_position_changed:
                 self._on_position_changed(self._state)
 
             # Sleep to approximate real-time playback
-            sleep_time = self.chunk_size / self._state.sample_rate
+            sleep_time = actual_len / self._state.sample_rate
             self._stop_event.wait(sleep_time)
 
         self._state.is_playing = False
