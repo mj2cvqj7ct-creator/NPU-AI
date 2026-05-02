@@ -31,6 +31,7 @@ from src.settings import SettingsManager
 from src.ui.styles import DARK_THEME
 from src.ui.tray import SystemTrayManager
 from src.ui.widgets.chain_editor import EffectChainEditor
+from src.ui.widgets.clip_indicator import ClipIndicator
 from src.ui.widgets.controls import (
     DepthControlPanel,
     EnhancerControlPanel,
@@ -40,6 +41,7 @@ from src.ui.widgets.controls import (
     SpatialControlPanel,
 )
 from src.ui.widgets.dac_panel import DACControlPanel
+from src.ui.widgets.device_selector import DeviceSelector
 from src.ui.widgets.eq_visualizer import EQVisualizer
 from src.ui.widgets.log_viewer import DebugPanel
 from src.ui.widgets.perf_monitor import PerfMonitor
@@ -189,6 +191,9 @@ class MainWindow(QMainWindow):
         self._player_bar = PlayerControlBar()
         layout.addWidget(self._player_bar)
 
+        self._clip_indicator = ClipIndicator()
+        layout.addWidget(self._clip_indicator)
+
         stats_row = QHBoxLayout()
         stats_row.setSpacing(16)
         self._latency_label = QLabel("Latency: -- ms")
@@ -275,6 +280,9 @@ class MainWindow(QMainWindow):
 
         self._dac_panel = DACControlPanel()
         layout.addWidget(self._dac_panel)
+
+        self._device_selector = DeviceSelector()
+        layout.addWidget(self._device_selector)
         layout.addStretch()
 
         scroll.setWidget(content)
@@ -743,7 +751,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About NPU Audio Enhancer",
-            "<h2>NPU Audio Enhancer v3.5.0</h2>"
+            "<h2>NPU Audio Enhancer v3.6.0</h2>"
             "<p>ARM64 Snapdragon X Elite NPU-accelerated real-time audio enhancement</p>"
             "<p><b>Features:</b></p>"
             "<ul>"
@@ -765,6 +773,11 @@ class MainWindow(QMainWindow):
             "<li>Session history & statistics persistence</li>"
             "<li>Preset comparison mode</li>"
             "<li>Customizable hotkeys</li>"
+            "<li>Multi-format export (WAV/FLAC/OGG)</li>"
+            "<li>User profiles manager</li>"
+            "<li>Real-time clipping indicator</li>"
+            "<li>Preset import/export (JSON sharing)</li>"
+            "<li>Audio device selector</li>"
             "<li>Application log viewer & debug panel</li>"
             "<li>A/B comparison with smooth crossfade bypass</li>"
             "<li>Tutorial / help overlay (F1)</li>"
