@@ -155,6 +155,14 @@ class AudioProcessor:
         self._enhancer = AudioEnhancer(sample_rate)
         self._spatial = SpatialProcessor(sample_rate)
         self._depth = DepthProcessor(sample_rate)
+
+        # Re-apply stage enables so UI state survives sample-rate changes (new instances default on).
+        self._separator.config.enabled = self.config.enable_separation
+        self._noise_reducer.enabled = self.config.enable_noise_reduction
+        self._enhancer.enabled = self.config.enable_enhancement
+        self._spatial.enabled = self.config.enable_spatial
+        self._depth.enabled = self.config.enable_depth
+
         if self._npu_engine_ref is not None:
             self._separator.set_npu_engine(self._npu_engine_ref)
             self._noise_reducer.set_npu_engine(self._npu_engine_ref)
@@ -170,7 +178,13 @@ class AudioProcessor:
             if self._flush_pipeline_on_next_bypass_frame:
                 self._reset_all_streaming_state()
                 self._flush_pipeline_on_next_bypass_frame = False
-            return audio
+            t_bypass = time.perf_counter()
+            dry = audio
+            if dry.ndim == 1:
+                dry = np.column_stack([dry, dry])
+            out = (dry * self._master_gain).astype(np.float32)
+            self._update_stats(out, (time.perf_counter() - t_bypass) * 1000)
+            return out
 
         if self._flush_pipeline_on_next_dsp_frame:
             self._reset_all_streaming_state()

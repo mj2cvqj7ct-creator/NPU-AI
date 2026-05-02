@@ -491,10 +491,11 @@ class MainWindow(QMainWindow):
     @pyqtSlot(dict)
     def _on_spatial_changed(self, params: dict) -> None:
         if self._app:
-            self._app.processor.config.enable_spatial = params.get("enabled", True)
+            p = dict(params)
+            self._app.processor.config.enable_spatial = p.get("enabled", True)
             spatial = self._app.processor.spatial
-            spatial.enabled = params.pop("enabled", True)
-            spatial.update_parameters(**params)
+            spatial.enabled = p.pop("enabled", True)
+            spatial.update_parameters(**p)
 
     @pyqtSlot(dict)
     def _on_separation_changed(self, params: dict) -> None:
@@ -510,10 +511,11 @@ class MainWindow(QMainWindow):
     @pyqtSlot(dict)
     def _on_depth_changed(self, params: dict) -> None:
         if self._app:
-            self._app.processor.config.enable_depth = params.get("enabled", True)
+            p = dict(params)
+            self._app.processor.config.enable_depth = p.get("enabled", True)
             depth = self._app.processor.depth
-            depth.enabled = params.pop("enabled", True)
-            depth.update_parameters(**params)
+            depth.enabled = p.pop("enabled", True)
+            depth.update_parameters(**p)
 
     @pyqtSlot(dict)
     def _on_noise_reducer_changed(self, params: dict) -> None:
