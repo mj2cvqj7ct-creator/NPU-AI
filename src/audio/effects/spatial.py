@@ -275,7 +275,7 @@ class SpatialProcessor:
             out_l, out_r = self._apply_crossfeed(out_l, out_r)
 
         # 8. Allpass diffuser for subtle spatial thickening
-        if self.holographic_intensity > 0.2:
+        if self.diffusion > 0.01:
             out_l = self._apply_allpass(out_l, is_left=True)
             out_r = self._apply_allpass(out_r, is_left=False)
 
