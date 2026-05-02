@@ -140,6 +140,7 @@ class AudioEnhancerApp:
         audio routing changes.
         """
         with self._endpoint_sync_lock:
+            logger.debug("Idle loopback probe: re-sync pipeline timing from default mix")
             self._sync_pipeline_sample_rates()
             self._sync_render_signature()
 

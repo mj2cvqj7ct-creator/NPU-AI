@@ -77,6 +77,15 @@ class MainWindow(QMainWindow):
         self._rate_defer_timer.setInterval(150)
         self._rate_defer_timer.timeout.connect(self._update_pipeline_rate_labels)
         self._start_mm_notification()
+        QTimer.singleShot(0, self._on_startup_idle_probe)
+
+    @pyqtSlot()
+    def _on_startup_idle_probe(self) -> None:
+        """Prime Pipeline/Rates from Windows default mix before first Start."""
+        if not self._app or self._master_bar.is_playing:
+            return
+        self._app.refresh_loopback_probe_idle()
+        self._update_pipeline_rate_labels()
 
     def _start_mm_notification(self) -> None:
         """Register MMDevice endpoint notifications (Windows)."""
