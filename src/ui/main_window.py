@@ -95,15 +95,39 @@ class MainWindow(QMainWindow):
         invalidate_default_render_endpoint_cache()
         if not self._app:
             return
-        if not self._master_bar.is_playing:
-            self._dac_panel.update_pipeline_rates(self._app.pipeline_rate_info())
+        changed = False
+        if self._master_bar.is_playing:
+            changed = self._app.sync_render_endpoint_if_changed()
+            if changed:
+                label = ", ".join(sorted(reasons)) if reasons else "device"
+                self.statusBar().showMessage(
+                    f"Audio device updated ({label}) — capture resynced",
+                    5000,
+                )
+        self._update_pipeline_rate_labels()
+
+    def _update_pipeline_rate_labels(self) -> None:
+        """Refresh loopback vs output in analysis row and DAC Pipeline line."""
+        if not self._app:
             return
-        if self._app.sync_render_endpoint_if_changed():
-            label = ", ".join(sorted(reasons)) if reasons else "device"
-            self.statusBar().showMessage(
-                f"Audio device updated ({label}) — capture resynced",
-                5000,
-            )
+        ri = self._app.pipeline_rate_info()
+        self._dac_panel.update_pipeline_rates(ri)
+        lb = int(ri["loopback_hz"])
+        out = int(ri["output_hz"])
+        if self._master_bar.is_playing:
+            if ri["resampling"]:
+                self._rate_label.setText(f"Rates: {lb}→{out} Hz")
+                self._rate_label.setStyleSheet("color: #FDCB6E;")
+            else:
+                self._rate_label.setText(f"Rates: {lb} Hz")
+                self._rate_label.setStyleSheet("color: #55EFC4;")
+        else:
+            if ri["resampling"]:
+                self._rate_label.setText(f"Rates: {lb}→{out} (idle)")
+                self._rate_label.setStyleSheet("color: #8B949E;")
+            else:
+                self._rate_label.setText(f"Rates: {lb} Hz (idle)")
+                self._rate_label.setStyleSheet("color: #8B949E;")
 
     def _setup_ui(self) -> None:
         """Build the main UI layout."""
@@ -524,7 +548,6 @@ class MainWindow(QMainWindow):
 
         dac_status = self._app.dac_controller.get_status_info()
         self._dac_panel.update_status(dac_status)
-        self._dac_panel.update_pipeline_rates(self._app.pipeline_rate_info())
 
         out_stats = self._app.output_stats
         out_u = int(out_stats.get("underrun_count", 0))
@@ -538,26 +561,7 @@ class MainWindow(QMainWindow):
         else:
             self._buffer_label.setStyleSheet("color: #8B949E;")
 
-        if self._master_bar.is_playing:
-            ri = self._app.pipeline_rate_info()
-            lb = int(ri["loopback_hz"])
-            out = int(ri["output_hz"])
-            if ri["resampling"]:
-                self._rate_label.setText(f"Rates: {lb}→{out} Hz")
-                self._rate_label.setStyleSheet("color: #FDCB6E;")
-            else:
-                self._rate_label.setText(f"Rates: {lb} Hz")
-                self._rate_label.setStyleSheet("color: #55EFC4;")
-        else:
-            ri = self._app.pipeline_rate_info()
-            lb = int(ri["loopback_hz"])
-            out = int(ri["output_hz"])
-            if ri["resampling"]:
-                self._rate_label.setText(f"Rates: {lb}→{out} (idle)")
-                self._rate_label.setStyleSheet("color: #8B949E;")
-            else:
-                self._rate_label.setText(f"Rates: {lb} Hz (idle)")
-                self._rate_label.setStyleSheet("color: #8B949E;")
+        self._update_pipeline_rate_labels()
 
         # DAC badge
         dac_name = dac_status.get("device_name", "N/A")
