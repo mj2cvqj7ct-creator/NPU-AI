@@ -19,6 +19,29 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+def probe_default_render_mix_sample_rate() -> int | None:
+    """Read the mix-format sample rate of the default playback device (Windows)."""
+    try:
+        import comtypes
+        from pycaw.pycaw import IAudioClient, IMMDeviceEnumerator
+
+        comtypes.CoInitialize()
+        enumerator = comtypes.CoCreateInstance(
+            comtypes.GUID("{BCDE0395-E52F-467C-8E3D-C4579291692E}"),
+            IMMDeviceEnumerator,
+            comtypes.CLSCTX_ALL,
+        )
+        device = enumerator.GetDefaultAudioEndpoint(0, 1)
+        client = device.Activate(IAudioClient._iid_, comtypes.CLSCTX_ALL, None)
+        mix = client.GetMixFormat()
+        rate = int(mix.contents.nSamplesPerSec)
+        logger.info("Default render mix sample rate: %d Hz", rate)
+        return rate
+    except Exception as e:
+        logger.debug("Could not probe mix sample rate: %s", e)
+        return None
+
+
 class CaptureMode(Enum):
     SHARED = "shared"
     EXCLUSIVE = "exclusive"

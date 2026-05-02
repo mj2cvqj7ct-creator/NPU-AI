@@ -264,3 +264,11 @@ class NPUEngine:
         for name in list(self._sessions.keys()):
             self.unload_model(name)
         logger.info("NPU engine shut down")
+
+    def load_default_models(self) -> None:
+        """Ensure placeholder ONNX files exist and load all registry models."""
+        from src.npu.models import MODEL_REGISTRY, ensure_models_exist
+
+        ensure_models_exist(self.config.model_dir)
+        for name in MODEL_REGISTRY:
+            self.load_model(name, f"{name}.onnx")

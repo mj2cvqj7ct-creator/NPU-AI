@@ -9,10 +9,19 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
+from pathlib import Path
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+def default_model_dir() -> str:
+    """Directory for ONNX weights: beside the frozen EXE, else repo ./models."""
+    if getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(sys.executable), "models")
+    return str(Path(__file__).resolve().parents[2] / "models")
 
 MODEL_REGISTRY = {
     "source_separation": {

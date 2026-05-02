@@ -35,6 +35,7 @@ a = Analysis(
         'pycaw',
         'pycaw.pycaw',
         'yaml',
+        'onnx',
     ],
     hookspath=[],
     hooksconfig={},
