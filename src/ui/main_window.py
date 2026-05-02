@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.audio.device_notify import NotificationHandle, start_render_endpoint_notifier
 from src.ui.styles import DARK_THEME
 from src.ui.widgets.controls import (
     DepthControlPanel,
@@ -64,6 +65,26 @@ class MainWindow(QMainWindow):
         self._setup_status_bar()
         self._setup_timers()
         self._connect_signals()
+        self._mm_notify: NotificationHandle | None = None
+        self._start_mm_notification()
+
+    def _start_mm_notification(self) -> None:
+        """Register MMDevice endpoint notifications (Windows)."""
+
+        def schedule(reason: str) -> None:
+            QTimer.singleShot(0, lambda r=reason: self._on_mm_device_event(r))
+
+        self._mm_notify = start_render_endpoint_notifier(schedule)
+
+    @pyqtSlot(str)
+    def _on_mm_device_event(self, reason: str) -> None:
+        if not self._app or not self._master_bar.is_playing:
+            return
+        if self._app.sync_render_endpoint_if_changed():
+            self.statusBar().showMessage(
+                f"Audio device updated ({reason}) — capture resynced",
+                5000,
+            )
 
     def _setup_ui(self) -> None:
         """Build the main UI layout."""
@@ -284,7 +305,7 @@ class MainWindow(QMainWindow):
 
         self._endpoint_timer = QTimer(self)
         self._endpoint_timer.timeout.connect(self._check_render_endpoint)
-        self._endpoint_timer.start(1500)
+        self._endpoint_timer.start(5000)
 
     def _connect_signals(self) -> None:
         """Connect UI signals to application controller."""
@@ -516,6 +537,9 @@ class MainWindow(QMainWindow):
             )
 
     def closeEvent(self, event) -> None:
+        if self._mm_notify is not None:
+            self._mm_notify.close()
+            self._mm_notify = None
         if self._app:
             self._app.shutdown()
         event.accept()
