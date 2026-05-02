@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "npu-audio-enhancer"
-version = "3.1.0"
+version = "3.2.0"
 description = "ARM64 Snapdragon X NPU-accelerated real-time audio enhancer for Spotify, Apple Music, and YouTube Music"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -48,6 +48,10 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.black]
 line-length = 100

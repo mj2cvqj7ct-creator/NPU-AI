@@ -73,6 +73,11 @@ class AudioProcessor:
         # Rolling LUFS estimation window
         self._lufs_buffer: list[float] = []
 
+        # A/B comparison state
+        self._ab_mode = False
+        self._ab_position = 0.0  # 0.0=A (processed), 1.0=B (dry)
+        self._ab_crossfade_rate = 0.02  # ~50 frames for full transition
+
     @property
     def separator(self) -> SourceSeparator:
         return self._separator
@@ -102,6 +107,14 @@ class AudioProcessor:
         self._bypass = value
 
     @property
+    def ab_mode(self) -> bool:
+        return self._ab_mode
+
+    @ab_mode.setter
+    def ab_mode(self, value: bool) -> None:
+        self._ab_mode = value
+
+    @property
     def master_gain(self) -> float:
         return self._master_gain
 
@@ -116,13 +129,18 @@ class AudioProcessor:
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         """Process audio through the full DSP chain."""
-        if self._bypass or audio.shape[0] == 0:
+        if audio.shape[0] == 0:
+            return audio
+
+        if self._bypass:
             return audio
 
         t0 = time.perf_counter()
 
         if audio.ndim == 1:
             audio = np.column_stack([audio, audio])
+
+        dry = audio.copy() if self._ab_mode else None
 
         audio = self._normalize_input(audio)
 
@@ -140,6 +158,17 @@ class AudioProcessor:
 
         audio = audio * self._master_gain
         audio = self._limit_output(audio)
+
+        if self._ab_mode and dry is not None:
+            target = 1.0 if self._bypass else 0.0
+            if abs(self._ab_position - target) > 1e-4:
+                if self._ab_position < target:
+                    self._ab_position = min(target, self._ab_position + self._ab_crossfade_rate)
+                else:
+                    self._ab_position = max(target, self._ab_position - self._ab_crossfade_rate)
+            wet_gain = 1.0 - self._ab_position
+            dry_gain = self._ab_position
+            audio = audio * wet_gain + dry * dry_gain
 
         elapsed = (time.perf_counter() - t0) * 1000
         self._update_stats(audio, elapsed)

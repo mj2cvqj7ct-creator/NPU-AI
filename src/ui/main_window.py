@@ -27,7 +27,9 @@ from PyQt6.QtWidgets import (
 )
 
 from src.presets import EffectPreset, PresetManager
+from src.settings import SettingsManager
 from src.ui.styles import DARK_THEME
+from src.ui.tray import SystemTrayManager
 from src.ui.widgets.controls import (
     DepthControlPanel,
     EnhancerControlPanel,
@@ -57,6 +59,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._app = app_controller
         self._preset_manager = PresetManager()
+        self._settings_mgr = SettingsManager()
 
         self.setWindowTitle("NPU Audio Enhancer - Snapdragon X Elite")
         self.setMinimumSize(1200, 800)
@@ -69,6 +72,8 @@ class MainWindow(QMainWindow):
         self._setup_timers()
         self._connect_signals()
         self._setup_shortcuts()
+        self._restore_settings()
+        self._tray = SystemTrayManager(self)
 
     def _setup_ui(self) -> None:
         """Build the main UI layout."""
@@ -482,6 +487,10 @@ class MainWindow(QMainWindow):
             sc = QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self)
             sc.activated.connect(lambda idx=i: self._tabs.setCurrentIndex(idx))
 
+        # A - toggle A/B comparison mode
+        sc_ab = QShortcut(QKeySequence(Qt.Key.Key_A), self)
+        sc_ab.activated.connect(self._toggle_ab_mode)
+
         # Ctrl+Up / Ctrl+Down - volume adjust
         sc_vol_up = QShortcut(QKeySequence("Ctrl+Up"), self)
         sc_vol_up.activated.connect(
@@ -499,6 +508,15 @@ class MainWindow(QMainWindow):
                 max(0.0, self._master_bar._volume.value - 0.05),
             ),
         )
+
+    def _toggle_ab_mode(self) -> None:
+        """Toggle A/B comparison mode with crossfade."""
+        if not self._app:
+            return
+        proc = self._app.processor
+        proc.ab_mode = not proc.ab_mode
+        state = "ON" if proc.ab_mode else "OFF"
+        self.statusBar().showMessage(f"A/B Comparison: {state}")
 
     def _update_visualizations(self) -> None:
         """Update audio visualizations from processing data."""
@@ -582,7 +600,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About NPU Audio Enhancer",
-            "<h2>NPU Audio Enhancer v3.1.0</h2>"
+            "<h2>NPU Audio Enhancer v3.2.0</h2>"
             "<p>ARM64 Snapdragon X Elite NPU-accelerated real-time audio enhancement</p>"
             "<p><b>Features:</b></p>"
             "<ul>"
@@ -594,9 +612,13 @@ class MainWindow(QMainWindow):
             "<li>SABAJ A20D ES9038PRO DAC with triple-buffer NPU streaming</li>"
             "<li>Adam-optimized deep learning recommendations</li>"
             "<li>8 built-in presets with user-defined preset management</li>"
+            "<li>A/B comparison with smooth crossfade bypass</li>"
+            "<li>System tray integration with playback controls</li>"
+            "<li>Persistent settings (window state, last preset, volume)</li>"
+            "<li>64 unit tests covering all core modules</li>"
             "<li>Spotify / Apple Music / YouTube Music support</li>"
             "</ul>"
-            "<p><b>Shortcuts:</b> Space=Play/Stop, B=Bypass, "
+            "<p><b>Shortcuts:</b> Space=Play/Stop, B=Bypass, A=A/B Compare, "
             "Ctrl+S=Save Preset, Ctrl+1-3=Tabs, Ctrl+Up/Down=Volume</p>"
             "<p>Powered by ONNX Runtime + DirectML on Snapdragon X NPU</p>",
         )
@@ -613,7 +635,42 @@ class MainWindow(QMainWindow):
                 f"NPU: {info.get('provider', 'N/A')}"
             )
 
+    def _restore_settings(self) -> None:
+        """Restore saved window state and settings."""
+        s = self._settings_mgr.settings
+        if s.window_maximized:
+            self.showMaximized()
+        else:
+            self.setGeometry(s.window_x, s.window_y, s.window_width, s.window_height)
+        self._tabs.setCurrentIndex(s.active_tab)
+        if s.always_on_top:
+            self._always_on_top.setChecked(True)
+            self._toggle_always_on_top(True)
+        if s.last_preset != "Default":
+            preset = self._preset_manager.get_preset(s.last_preset)
+            if preset:
+                self._preset_selector._combo.setCurrentText(s.last_preset)
+
+    def _save_settings(self) -> None:
+        """Save current window state and settings."""
+        s = self._settings_mgr.settings
+        s.window_maximized = self.isMaximized()
+        if not s.window_maximized:
+            geo = self.geometry()
+            s.window_x = geo.x()
+            s.window_y = geo.y()
+            s.window_width = geo.width()
+            s.window_height = geo.height()
+        s.last_preset = self._preset_manager.current_name
+        s.active_tab = self._tabs.currentIndex()
+        s.always_on_top = self._always_on_top.isChecked()
+        if self._app:
+            s.master_volume = self._app.processor.master_gain
+            s.bypass_enabled = self._app.processor.bypass
+        self._settings_mgr.save()
+
     def closeEvent(self, event) -> None:
+        self._save_settings()
         if self._app:
             self._app.shutdown()
         event.accept()
