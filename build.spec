@@ -7,6 +7,21 @@ Build with: pyinstaller build.spec
 import sys
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+_models_dir = _REPO_ROOT / "models"
+_models_dir.mkdir(parents=True, exist_ok=True)
+try:
+    from src.npu.models import ensure_models_exist
+
+    ensure_models_exist(str(_models_dir))
+except Exception as exc:
+    print(
+        f"Warning: ONNX placeholder refresh failed ({exc}); "
+        "run the app once with onnx installed to populate ./models",
+    )
+
 block_cipher = None
 
 a = Analysis(
@@ -15,6 +30,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('resources', 'resources'),
+        ('models', 'models'),
     ],
     hiddenimports=[
         'PyQt6',

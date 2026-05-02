@@ -590,9 +590,28 @@ class MainWindow(QMainWindow):
 
         npu_infer_ms = float(npu_info.get("avg_inference_ms", 0.0))
         if npu_infer_ms > 0:
-            self._npu_load_label.setText(f"Infer: {npu_infer_ms:.2f} ms")
+            self._npu_load_label.setText(f"Infer: {npu_infer_ms:.2f} ms avg")
         else:
             self._npu_load_label.setText("Infer: —")
+
+        lines = [
+            f"Provider: {provider}",
+            f"Models loaded: {npu_info.get('models_loaded', 0)}",
+        ]
+        mstats = npu_info.get("model_stats") or {}
+        for name in sorted(mstats.keys()):
+            row = mstats[name]
+            cnt = int(row.get("infer_count", 0))
+            avg = float(row.get("avg_ms", 0.0))
+            if cnt > 0:
+                lines.append(f"{name}: {cnt} calls, {avg:.2f} ms avg")
+            else:
+                lines.append(f"{name}: —")
+        self._npu_load_label.setToolTip("\n".join(lines))
+        self._npu_status_label.setToolTip(
+            "ONNX Runtime execution provider for AI effects. "
+            "Hover “Infer” for per-model inference stats.",
+        )
 
         dac_status = self._app.dac_controller.get_status_info()
         self._dac_panel.update_status(dac_status)
