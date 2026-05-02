@@ -229,6 +229,8 @@ class AudioEnhancerApp:
         frame_count = 0
         recommend_interval = 500
 
+        last_out_sr = -1
+
         while self._is_running:
             audio = self._capture.get_audio(timeout=0.05)
             if audio is None:
@@ -236,7 +238,11 @@ class AudioEnhancerApp:
 
             try:
                 out_sr = self._dac_controller.config.sample_rate.value
-                cap_sr = self._capture.config.format.sample_rate
+                if out_sr != last_out_sr:
+                    self._processor.set_sample_rate(out_sr)
+                    last_out_sr = out_sr
+
+                cap_sr = self._capture.effective_sample_rate
                 if cap_sr != out_sr:
                     audio = self._resample_audio(audio, cap_sr, out_sr)
 

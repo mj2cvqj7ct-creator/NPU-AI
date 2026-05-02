@@ -93,6 +93,8 @@ class WASAPICapture:
         self._lock = threading.Lock()
         self._stream = None
         self._wasapi_client = None
+        # Set by WASAPI thread from IAudioClient.GetMixFormat (authoritative)
+        self._actual_sample_rate: int | None = None
 
     def add_callback(self, callback: Callable[[np.ndarray], None]) -> None:
         with self._lock:
@@ -176,6 +178,13 @@ class WASAPICapture:
             self.config.buffer_size_ms,
         )
 
+    @property
+    def effective_sample_rate(self) -> int:
+        """Sample rate of captured PCM (WASAPI mix rate or config)."""
+        if self._actual_sample_rate is not None:
+            return self._actual_sample_rate
+        return self.config.format.sample_rate
+
     def stop(self) -> None:
         self._is_capturing = False
         if self._capture_thread:
@@ -188,6 +197,7 @@ class WASAPICapture:
             except Exception:
                 pass
             self._stream = None
+        self._actual_sample_rate = None
         logger.info("Audio capture stopped")
 
     def _capture_loop_wasapi(self) -> None:
@@ -204,6 +214,12 @@ class WASAPICapture:
 
             client = self._wasapi_client
             mix_format = client.GetMixFormat()
+            mix_rate = int(mix_format.contents.nSamplesPerSec)
+            mix_ch = int(mix_format.contents.nChannels)
+            with self._lock:
+                self._actual_sample_rate = mix_rate
+            self.config.format.sample_rate = mix_rate
+            logger.info("WASAPI mix format: %d Hz, %d ch", mix_rate, mix_ch)
             buffer_duration_hns = int(
                 REFTIMES_PER_SEC * self.config.buffer_size_ms / 1000
             )
@@ -237,6 +253,11 @@ class WASAPICapture:
                             audio_data = np.frombuffer(raw, dtype=np.float32).reshape(
                                 num_frames, channels
                             ).copy()
+                            if channels > 2:
+                                audio_data = audio_data[:, :2]
+                            elif channels == 1:
+                                c0 = audio_data[:, 0]
+                                audio_data = np.column_stack([c0, c0])
                             self._dispatch_audio(audio_data)
 
                         capture_client.ReleaseBuffer(num_frames)
@@ -273,6 +294,8 @@ class WASAPICapture:
                 callback=audio_callback,
             )
             self._stream.start()
+            with self._lock:
+                self._actual_sample_rate = int(self.config.format.sample_rate)
 
             while self._is_capturing:
                 import time
