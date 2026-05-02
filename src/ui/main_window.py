@@ -300,6 +300,16 @@ class MainWindow(QMainWindow):
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
 
+        audio_menu = menu_bar.addMenu("Audio")
+        resync_action = QAction("Resync loopback capture…", self)
+        resync_action.setShortcut("Ctrl+Shift+R")
+        resync_action.setStatusTip(
+            "Re-probe default playback mix and restart WASAPI loopback "
+            "(use if sound dropped after a driver change)",
+        )
+        resync_action.triggered.connect(self._on_resync_loopback)
+        audio_menu.addAction(resync_action)
+
     def _setup_status_bar(self) -> None:
         """Setup status bar."""
         status = QStatusBar()
@@ -351,6 +361,22 @@ class MainWindow(QMainWindow):
                 self._app.stop_processing()
                 self._master_bar.set_status("Stopped")
                 self.statusBar().showMessage("Audio processing stopped")
+
+    @pyqtSlot()
+    def _on_resync_loopback(self) -> None:
+        if not self._app:
+            return
+        if not self._master_bar.is_playing:
+            self.statusBar().showMessage(
+                "Start processing first, then use Audio → Resync loopback",
+                4000,
+            )
+            return
+        self._app.force_resync_loopback_capture()
+        self.statusBar().showMessage(
+            "Loopback capture resynced (manual)",
+            4000,
+        )
 
     @pyqtSlot(bool)
     def _on_bypass_toggled(self, bypassed: bool) -> None:
@@ -550,6 +576,8 @@ class MainWindow(QMainWindow):
             )
 
     def closeEvent(self, event) -> None:
+        self._mm_debounce_timer.stop()
+        self._mm_pending_reasons.clear()
         if self._mm_notify is not None:
             self._mm_notify.close()
             self._mm_notify = None

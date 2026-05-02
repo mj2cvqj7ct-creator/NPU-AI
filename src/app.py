@@ -113,6 +113,23 @@ class AudioEnhancerApp:
                 self._capture.start()
             return True
 
+    def force_resync_loopback_capture(self) -> None:
+        """Refresh default-render snapshot, pipeline timing, and restart capture.
+
+        Use when Windows mix format changes without updating device id (rare)
+        or after external driver tweaks.
+        """
+        with self._endpoint_sync_lock:
+            st = probe_default_render_endpoint_state()
+            if st:
+                self._render_signature = self._render_sig_from_state(st)
+            else:
+                self._render_signature = None
+            self._sync_pipeline_sample_rates()
+            if self._capture.is_capturing:
+                self._capture.stop()
+                self._capture.start()
+
     def _sync_pipeline_sample_rates(self) -> None:
         """Align capture buffer and DSP sample rate with DAC output."""
         out_sr = self._dac_controller.config.sample_rate.value
