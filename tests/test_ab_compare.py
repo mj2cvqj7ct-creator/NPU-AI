@@ -57,3 +57,35 @@ class TestABCompare:
 
         # With ab_position=0 (A/wet), output should be very close to normal
         np.testing.assert_allclose(result_normal, result_ab, atol=1e-5)
+
+    def test_ab_showing_dry_default(self, processor):
+        assert processor.ab_showing_dry is False
+
+    def test_ab_showing_dry_crossfades_toward_dry(self, processor):
+        processor.ab_mode = True
+        processor.ab_showing_dry = True
+        audio = np.random.randn(480, 2).astype(np.float32) * 0.3
+        # Process multiple frames so crossfade advances
+        for _ in range(60):
+            processor.process(audio.copy())
+        # After 60 frames (> 50 needed), position should be ~1.0 (dry)
+        assert processor._ab_position > 0.9
+
+    def test_ab_showing_dry_false_crossfades_back(self, processor):
+        processor.ab_mode = True
+        processor.ab_showing_dry = True
+        audio = np.random.randn(480, 2).astype(np.float32) * 0.3
+        for _ in range(60):
+            processor.process(audio.copy())
+        # Now switch back to processed
+        processor.ab_showing_dry = False
+        for _ in range(60):
+            processor.process(audio.copy())
+        assert processor._ab_position < 0.1
+
+    def test_bypass_still_works_without_ab(self, processor):
+        processor.bypass = True
+        processor.ab_mode = False
+        audio = np.random.randn(480, 2).astype(np.float32) * 0.3
+        result = processor.process(audio)
+        np.testing.assert_array_equal(result, audio)

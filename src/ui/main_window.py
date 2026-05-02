@@ -510,13 +510,21 @@ class MainWindow(QMainWindow):
         )
 
     def _toggle_ab_mode(self) -> None:
-        """Toggle A/B comparison mode with crossfade."""
+        """Toggle A/B comparison between processed and dry audio."""
         if not self._app:
             return
         proc = self._app.processor
-        proc.ab_mode = not proc.ab_mode
-        state = "ON" if proc.ab_mode else "OFF"
-        self.statusBar().showMessage(f"A/B Comparison: {state}")
+        if not proc.ab_mode:
+            proc.ab_mode = True
+            proc.ab_showing_dry = False
+            self.statusBar().showMessage("A/B Comparison: ON (A=Processed)")
+        elif not proc.ab_showing_dry:
+            proc.ab_showing_dry = True
+            self.statusBar().showMessage("A/B Comparison: (B=Dry)")
+        else:
+            proc.ab_mode = False
+            proc.ab_showing_dry = False
+            self.statusBar().showMessage("A/B Comparison: OFF")
 
     def _update_visualizations(self) -> None:
         """Update audio visualizations from processing data."""

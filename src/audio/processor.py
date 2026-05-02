@@ -75,6 +75,7 @@ class AudioProcessor:
 
         # A/B comparison state
         self._ab_mode = False
+        self._ab_showing_dry = False  # True=B (dry), False=A (processed)
         self._ab_position = 0.0  # 0.0=A (processed), 1.0=B (dry)
         self._ab_crossfade_rate = 0.02  # ~50 frames for full transition
 
@@ -115,6 +116,14 @@ class AudioProcessor:
         self._ab_mode = value
 
     @property
+    def ab_showing_dry(self) -> bool:
+        return self._ab_showing_dry
+
+    @ab_showing_dry.setter
+    def ab_showing_dry(self, value: bool) -> None:
+        self._ab_showing_dry = value
+
+    @property
     def master_gain(self) -> float:
         return self._master_gain
 
@@ -132,7 +141,7 @@ class AudioProcessor:
         if audio.shape[0] == 0:
             return audio
 
-        if self._bypass:
+        if self._bypass and not self._ab_mode:
             return audio
 
         t0 = time.perf_counter()
@@ -160,7 +169,7 @@ class AudioProcessor:
         audio = self._limit_output(audio)
 
         if self._ab_mode and dry is not None:
-            target = 1.0 if self._bypass else 0.0
+            target = 1.0 if self._ab_showing_dry else 0.0
             if abs(self._ab_position - target) > 1e-4:
                 if self._ab_position < target:
                     self._ab_position = min(target, self._ab_position + self._ab_crossfade_rate)
