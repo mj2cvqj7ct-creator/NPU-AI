@@ -340,6 +340,7 @@ class MainWindow(QMainWindow):
             sep.config.instrument_clarity = params.get("instrument_clarity", 0.5)
             sep.config.bass_enhance = params.get("bass_enhance", 0.2)
             sep.config.drum_punch = params.get("drum_punch", 0.2)
+            sep.config.wiener_iterations = int(params.get("wiener_iterations", 3))
 
     @pyqtSlot(dict)
     def _on_enhancer_changed(self, params: dict) -> None:

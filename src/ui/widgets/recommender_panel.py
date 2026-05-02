@@ -77,7 +77,7 @@ class RecommenderPanel(QGroupBox):
         feature_names = [
             "Energy", "Valence", "Tempo", "Danceability",
             "Acousticness", "Instrumentalness", "Speechiness", "Liveness",
-            "Spectral Centroid", "Harmonic Ratio",
+            "Spectral Centroid", "Spectral Rolloff", "Spectral Contrast",
         ]
         for name in feature_names:
             bar = PreferenceBar(name)

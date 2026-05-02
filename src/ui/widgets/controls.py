@@ -248,7 +248,7 @@ class EnhancerControlPanel(QGroupBox):
             "psychoacoustic_bass": self._psych_bass.value,
             "multiband_compression": self._compression.value,
             "stereo_width": self._stereo_width.value,
-            "lufs_target": self._lufs_target.value,
+            "loudness_target": self._lufs_target.value,
         }
 
 
