@@ -40,6 +40,7 @@ from src.ui.widgets.controls import (
     SpatialControlPanel,
 )
 from src.ui.widgets.dac_panel import DACControlPanel
+from src.ui.widgets.eq_visualizer import EQVisualizer
 from src.ui.widgets.log_viewer import DebugPanel
 from src.ui.widgets.recommender_panel import RecommenderPanel
 from src.ui.widgets.stats_panel import AudioStatsPanel
@@ -158,6 +159,14 @@ class MainWindow(QMainWindow):
         self._waveform = WaveformVisualizer()
         self._waveform.setMinimumHeight(120)
         layout.addWidget(self._waveform)
+
+        eq_label = QLabel("Parametric EQ Response")
+        eq_label.setObjectName("sectionTitle")
+        layout.addWidget(eq_label)
+
+        self._eq_viz = EQVisualizer()
+        self._eq_viz.setMinimumHeight(140)
+        layout.addWidget(self._eq_viz)
 
         stems_label = QLabel("Source Separation")
         stems_label.setObjectName("sectionTitle")
@@ -320,6 +329,12 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self._always_on_top)
 
         help_menu = menu_bar.addMenu("Help")
+        tutorial_action = QAction("Tutorial / ガイド", self)
+        tutorial_action.setShortcut("F1")
+        tutorial_action.triggered.connect(self._show_tutorial)
+        help_menu.addAction(tutorial_action)
+
+        help_menu.addSeparator()
         about_action = QAction("About", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
@@ -411,6 +426,14 @@ class MainWindow(QMainWindow):
                 k: v for k, v in params.items() if k != "enabled"
             })
             self._app.processor.enhancer.enabled = params.get("enabled", True)
+        # Update EQ visualizer
+        self._eq_viz.set_gains_from_enhancer(
+            warmth=params.get("warmth", 0.3),
+            clarity=params.get("clarity", 0.5),
+            presence=params.get("presence", 0.4),
+            air=params.get("air", 0.3),
+            bass_boost=params.get("bass_boost", 0.2),
+        )
 
     @pyqtSlot(dict)
     def _on_depth_changed(self, params: dict) -> None:
@@ -685,13 +708,20 @@ class MainWindow(QMainWindow):
             self.setWindowFlags(flags & ~Qt.WindowType.WindowStaysOnTopHint)
         self.show()
 
+    def _show_tutorial(self) -> None:
+        """Show the tutorial/help overlay."""
+        from src.ui.widgets.help_overlay import HelpOverlay
+
+        overlay = HelpOverlay(self)
+        overlay.show_at_center(self)
+
     def _show_about(self) -> None:
         from PyQt6.QtWidgets import QMessageBox
 
         QMessageBox.about(
             self,
             "About NPU Audio Enhancer",
-            "<h2>NPU Audio Enhancer v3.3.0</h2>"
+            "<h2>NPU Audio Enhancer v3.4.0</h2>"
             "<p>ARM64 Snapdragon X Elite NPU-accelerated real-time audio enhancement</p>"
             "<p><b>Features:</b></p>"
             "<ul>"
@@ -701,16 +731,21 @@ class MainWindow(QMainWindow):
             "<li>12-line FDN reverb with modulated delay lines</li>"
             "<li>Tape saturation harmonic exciter with transient shaping</li>"
             "<li>SABAJ A20D ES9038PRO DAC with triple-buffer NPU streaming</li>"
-            "<li>Audio file import/export (WAV/FLAC)</li>"
+            "<li>Audio file import/export (WAV)</li>"
             "<li>Genre auto-detection with preset recommendations</li>"
             "<li>Real-time audio stats dashboard (RMS/LUFS/DR)</li>"
             "<li>Drag-and-drop effect chain reordering</li>"
+            "<li>Interactive parametric EQ curve visualizer</li>"
+            "<li>Audio player with DSP processing</li>"
+            "<li>Batch export queue</li>"
+            "<li>Session history & statistics persistence</li>"
             "<li>Application log viewer & debug panel</li>"
             "<li>A/B comparison with smooth crossfade bypass</li>"
+            "<li>Tutorial / help overlay (F1)</li>"
             "<li>System tray integration with playback controls</li>"
             "<li>Spotify / Apple Music / YouTube Music support</li>"
             "</ul>"
-            "<p><b>Shortcuts:</b> Space=Play, B=Bypass, A=A/B, "
+            "<p><b>Shortcuts:</b> Space=Play, B=Bypass, A=A/B, F1=Help, "
             "Ctrl+O=Import, Ctrl+E=Export, Ctrl+S=Save Preset, "
             "Ctrl+1-5=Tabs, Ctrl+Up/Down=Volume</p>"
             "<p>Powered by ONNX Runtime + DirectML on Snapdragon X NPU</p>",
