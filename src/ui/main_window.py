@@ -30,6 +30,7 @@ from src.presets import EffectPreset, PresetManager
 from src.settings import SettingsManager
 from src.ui.styles import DARK_THEME
 from src.ui.tray import SystemTrayManager
+from src.ui.widgets.chain_editor import EffectChainEditor
 from src.ui.widgets.controls import (
     DepthControlPanel,
     EnhancerControlPanel,
@@ -39,7 +40,9 @@ from src.ui.widgets.controls import (
     SpatialControlPanel,
 )
 from src.ui.widgets.dac_panel import DACControlPanel
+from src.ui.widgets.log_viewer import DebugPanel
 from src.ui.widgets.recommender_panel import RecommenderPanel
+from src.ui.widgets.stats_panel import AudioStatsPanel
 from src.ui.widgets.visualizer import (
     SpectrumVisualizer,
     StemLevelMeters,
@@ -199,6 +202,12 @@ class MainWindow(QMainWindow):
         rec_tab = self._create_recommender_tab()
         tabs.addTab(rec_tab, "AI Recommend")
 
+        stats_tab = self._create_stats_tab()
+        tabs.addTab(stats_tab, "Stats")
+
+        debug_tab = self._create_debug_tab()
+        tabs.addTab(debug_tab, "Debug")
+
         layout.addWidget(tabs)
         return panel
 
@@ -211,6 +220,9 @@ class MainWindow(QMainWindow):
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setSpacing(12)
+
+        self._chain_editor = EffectChainEditor()
+        layout.addWidget(self._chain_editor)
 
         self._spatial_panel = SpatialControlPanel()
         self._separation_panel = SeparationControlPanel()
@@ -258,11 +270,44 @@ class MainWindow(QMainWindow):
         scroll.setWidget(content)
         return scroll
 
+    def _create_stats_tab(self) -> QWidget:
+        """Create the audio statistics tab."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
+
+        self._stats_panel = AudioStatsPanel()
+        layout.addWidget(self._stats_panel)
+
+        scroll.setWidget(content)
+        return scroll
+
+    def _create_debug_tab(self) -> QWidget:
+        """Create the debug/log viewer tab."""
+        self._debug_panel = DebugPanel()
+        return self._debug_panel
+
     def _setup_menu(self) -> None:
         """Setup application menu bar."""
         menu_bar = self.menuBar()
 
         file_menu = menu_bar.addMenu("File")
+
+        import_action = QAction("Import Audio File...", self)
+        import_action.setShortcut("Ctrl+O")
+        import_action.triggered.connect(self._on_import_audio)
+        file_menu.addAction(import_action)
+
+        export_action = QAction("Export Processed Audio...", self)
+        export_action.setShortcut("Ctrl+E")
+        export_action.triggered.connect(self._on_export_audio)
+        file_menu.addAction(export_action)
+
+        file_menu.addSeparator()
+
         exit_action = QAction("Exit", self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
@@ -482,8 +527,8 @@ class MainWindow(QMainWindow):
         sc_save = QShortcut(QKeySequence("Ctrl+S"), self)
         sc_save.activated.connect(lambda: self._preset_selector._on_save_clicked())
 
-        # 1-3 - switch effect tabs
-        for i in range(3):
+        # 1-5 - switch tabs
+        for i in range(5):
             sc = QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self)
             sc.activated.connect(lambda idx=i: self._tabs.setCurrentIndex(idx))
 
@@ -508,6 +553,44 @@ class MainWindow(QMainWindow):
                 max(0.0, self._master_bar._volume.value - 0.05),
             ),
         )
+
+    def _on_import_audio(self) -> None:
+        """Import audio file for offline processing."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Audio File",
+            "",
+            "Audio Files (*.wav *.flac);;WAV (*.wav);;FLAC (*.flac)",
+        )
+        if not path:
+            return
+
+        from src.audio.file_io import AudioFileIO
+
+        info = AudioFileIO.get_file_info(path)
+        if info:
+            self.statusBar().showMessage(
+                f"Imported: {info.filename} ({info.sample_rate}Hz, {info.duration_sec:.1f}s)"
+            )
+        else:
+            self.statusBar().showMessage("Import failed")
+
+    def _on_export_audio(self) -> None:
+        """Export processed audio to file."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Processed Audio",
+            "processed_output.wav",
+            "WAV 24-bit (*.wav);;WAV 16-bit (*.wav);;WAV 32-bit Float (*.wav)",
+        )
+        if not path:
+            return
+
+        self.statusBar().showMessage(f"Export target: {path}")
 
     def _toggle_ab_mode(self) -> None:
         """Toggle A/B comparison between processed and dry audio."""
@@ -608,7 +691,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About NPU Audio Enhancer",
-            "<h2>NPU Audio Enhancer v3.2.0</h2>"
+            "<h2>NPU Audio Enhancer v3.3.0</h2>"
             "<p>ARM64 Snapdragon X Elite NPU-accelerated real-time audio enhancement</p>"
             "<p><b>Features:</b></p>"
             "<ul>"
@@ -618,16 +701,18 @@ class MainWindow(QMainWindow):
             "<li>12-line FDN reverb with modulated delay lines</li>"
             "<li>Tape saturation harmonic exciter with transient shaping</li>"
             "<li>SABAJ A20D ES9038PRO DAC with triple-buffer NPU streaming</li>"
-            "<li>Adam-optimized deep learning recommendations</li>"
-            "<li>8 built-in presets with user-defined preset management</li>"
+            "<li>Audio file import/export (WAV/FLAC)</li>"
+            "<li>Genre auto-detection with preset recommendations</li>"
+            "<li>Real-time audio stats dashboard (RMS/LUFS/DR)</li>"
+            "<li>Drag-and-drop effect chain reordering</li>"
+            "<li>Application log viewer & debug panel</li>"
             "<li>A/B comparison with smooth crossfade bypass</li>"
             "<li>System tray integration with playback controls</li>"
-            "<li>Persistent settings (window state, last preset, volume)</li>"
-            "<li>64 unit tests covering all core modules</li>"
             "<li>Spotify / Apple Music / YouTube Music support</li>"
             "</ul>"
-            "<p><b>Shortcuts:</b> Space=Play/Stop, B=Bypass, A=A/B Compare, "
-            "Ctrl+S=Save Preset, Ctrl+1-3=Tabs, Ctrl+Up/Down=Volume</p>"
+            "<p><b>Shortcuts:</b> Space=Play, B=Bypass, A=A/B, "
+            "Ctrl+O=Import, Ctrl+E=Export, Ctrl+S=Save Preset, "
+            "Ctrl+1-5=Tabs, Ctrl+Up/Down=Volume</p>"
             "<p>Powered by ONNX Runtime + DirectML on Snapdragon X NPU</p>",
         )
 

@@ -21,7 +21,7 @@ import sys
 
 # --- Configuration ---
 APP_NAME = "NPU Audio Enhancer"
-APP_VERSION = "3.2.0"
+APP_VERSION = "3.3.0"
 INSTALLER_FILENAME = f"NPU_Audio_Enhancer_Setup_{APP_VERSION}.exe"
 
 
