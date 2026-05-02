@@ -42,7 +42,10 @@ from src.ui.widgets.controls import (
 from src.ui.widgets.dac_panel import DACControlPanel
 from src.ui.widgets.eq_visualizer import EQVisualizer
 from src.ui.widgets.log_viewer import DebugPanel
+from src.ui.widgets.perf_monitor import PerfMonitor
+from src.ui.widgets.player_bar import PlayerControlBar
 from src.ui.widgets.recommender_panel import RecommenderPanel
+from src.ui.widgets.spectrogram import SpectrogramWidget
 from src.ui.widgets.stats_panel import AudioStatsPanel
 from src.ui.widgets.visualizer import (
     SpectrumVisualizer,
@@ -168,12 +171,23 @@ class MainWindow(QMainWindow):
         self._eq_viz.setMinimumHeight(140)
         layout.addWidget(self._eq_viz)
 
+        spec_label = QLabel("Spectrogram")
+        spec_label.setObjectName("sectionTitle")
+        layout.addWidget(spec_label)
+
+        self._spectrogram = SpectrogramWidget()
+        self._spectrogram.setMinimumHeight(100)
+        layout.addWidget(self._spectrogram)
+
         stems_label = QLabel("Source Separation")
         stems_label.setObjectName("sectionTitle")
         layout.addWidget(stems_label)
 
         self._stem_meters = StemLevelMeters()
         layout.addWidget(self._stem_meters)
+
+        self._player_bar = PlayerControlBar()
+        layout.addWidget(self._player_bar)
 
         stats_row = QHBoxLayout()
         stats_row.setSpacing(16)
@@ -213,6 +227,9 @@ class MainWindow(QMainWindow):
 
         stats_tab = self._create_stats_tab()
         tabs.addTab(stats_tab, "Stats")
+
+        perf_tab = self._create_perf_tab()
+        tabs.addTab(perf_tab, "Perf")
 
         debug_tab = self._create_debug_tab()
         tabs.addTab(debug_tab, "Debug")
@@ -293,6 +310,11 @@ class MainWindow(QMainWindow):
 
         scroll.setWidget(content)
         return scroll
+
+    def _create_perf_tab(self) -> QWidget:
+        """Create the performance monitor tab."""
+        self._perf_monitor = PerfMonitor()
+        return self._perf_monitor
 
     def _create_debug_tab(self) -> QWidget:
         """Create the debug/log viewer tab."""
@@ -550,8 +572,8 @@ class MainWindow(QMainWindow):
         sc_save = QShortcut(QKeySequence("Ctrl+S"), self)
         sc_save.activated.connect(lambda: self._preset_selector._on_save_clicked())
 
-        # 1-5 - switch tabs
-        for i in range(5):
+        # 1-6 - switch tabs
+        for i in range(6):
             sc = QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self)
             sc.activated.connect(lambda idx=i: self._tabs.setCurrentIndex(idx))
 
@@ -721,7 +743,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About NPU Audio Enhancer",
-            "<h2>NPU Audio Enhancer v3.4.0</h2>"
+            "<h2>NPU Audio Enhancer v3.5.0</h2>"
             "<p>ARM64 Snapdragon X Elite NPU-accelerated real-time audio enhancement</p>"
             "<p><b>Features:</b></p>"
             "<ul>"
@@ -736,9 +758,13 @@ class MainWindow(QMainWindow):
             "<li>Real-time audio stats dashboard (RMS/LUFS/DR)</li>"
             "<li>Drag-and-drop effect chain reordering</li>"
             "<li>Interactive parametric EQ curve visualizer</li>"
-            "<li>Audio player with DSP processing</li>"
+            "<li>Audio player with DSP processing & transport bar</li>"
             "<li>Batch export queue</li>"
+            "<li>Scrolling spectrogram display</li>"
+            "<li>NPU performance monitor & processing graph</li>"
             "<li>Session history & statistics persistence</li>"
+            "<li>Preset comparison mode</li>"
+            "<li>Customizable hotkeys</li>"
             "<li>Application log viewer & debug panel</li>"
             "<li>A/B comparison with smooth crossfade bypass</li>"
             "<li>Tutorial / help overlay (F1)</li>"
@@ -747,7 +773,8 @@ class MainWindow(QMainWindow):
             "</ul>"
             "<p><b>Shortcuts:</b> Space=Play, B=Bypass, A=A/B, F1=Help, "
             "Ctrl+O=Import, Ctrl+E=Export, Ctrl+S=Save Preset, "
-            "Ctrl+1-5=Tabs, Ctrl+Up/Down=Volume</p>"
+            "Ctrl+1-6=Tabs, Ctrl+Shift+A=Preset Compare, "
+            "Ctrl+Up/Down=Volume</p>"
             "<p>Powered by ONNX Runtime + DirectML on Snapdragon X NPU</p>",
         )
 
