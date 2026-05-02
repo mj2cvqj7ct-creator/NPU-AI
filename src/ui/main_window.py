@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.audio.capture import invalidate_default_render_endpoint_cache
 from src.audio.device_notify import NotificationHandle, start_render_endpoint_notifier
 from src.ui.styles import DARK_THEME
 from src.ui.widgets.controls import (
@@ -82,6 +83,7 @@ class MainWindow(QMainWindow):
         self._mm_notify = start_render_endpoint_notifier(schedule)
 
     def _arm_mm_debounce(self, reason: str) -> None:
+        invalidate_default_render_endpoint_cache()
         self._mm_pending_reasons.add(reason)
         self._mm_debounce_timer.stop()
         self._mm_debounce_timer.start()
@@ -90,7 +92,11 @@ class MainWindow(QMainWindow):
     def _flush_mm_resync(self) -> None:
         reasons = self._mm_pending_reasons.copy()
         self._mm_pending_reasons.clear()
-        if not self._app or not self._master_bar.is_playing:
+        invalidate_default_render_endpoint_cache()
+        if not self._app:
+            return
+        if not self._master_bar.is_playing:
+            self._dac_panel.update_pipeline_rates(self._app.pipeline_rate_info())
             return
         if self._app.sync_render_endpoint_if_changed():
             label = ", ".join(sorted(reasons)) if reasons else "device"

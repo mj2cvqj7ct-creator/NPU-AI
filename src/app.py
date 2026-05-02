@@ -295,6 +295,7 @@ class AudioEnhancerApp:
         self._capture.stop()
         self._output.stop()
         self._last_output_underrun_count = 0
+        invalidate_default_render_endpoint_cache()
 
         logger.info("Audio processing pipeline stopped")
 
