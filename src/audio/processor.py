@@ -70,6 +70,8 @@ class AudioProcessor:
         self._depth = DepthProcessor(self.config.sample_rate)
         self._stats = ProcessorStats()
         self._bypass = False
+        self._flush_pipeline_on_next_bypass_frame = False
+        self._flush_pipeline_on_next_dsp_frame = False
         self._master_gain = 1.0
 
         self._npu_engine_ref = None
@@ -109,7 +111,23 @@ class AudioProcessor:
 
     @bypass.setter
     def bypass(self, value: bool) -> None:
-        self._bypass = value
+        v = bool(value)
+        if v != self._bypass:
+            if v:
+                self._flush_pipeline_on_next_bypass_frame = True
+            else:
+                self._flush_pipeline_on_next_dsp_frame = True
+        self._bypass = v
+
+    def _reset_all_streaming_state(self) -> None:
+        """Clear every effect stage; safe when toggling bypass (avoid stale tails)."""
+        self._noise_reducer.reset_streaming_state()
+        self._separator.reset_streaming_state()
+        self._enhancer.reset_streaming_state()
+        self._spatial.reset_streaming_state()
+        self._depth.reset_streaming_state()
+        self._limiter_state = 10 ** (self.config.headroom_db / 20.0)
+        self._lufs_buffer.clear()
 
     @property
     def master_gain(self) -> float:
@@ -145,8 +163,18 @@ class AudioProcessor:
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         """Process audio through the full DSP chain."""
-        if self._bypass or audio.shape[0] == 0:
+        if audio.shape[0] == 0:
             return audio
+
+        if self._bypass:
+            if self._flush_pipeline_on_next_bypass_frame:
+                self._reset_all_streaming_state()
+                self._flush_pipeline_on_next_bypass_frame = False
+            return audio
+
+        if self._flush_pipeline_on_next_dsp_frame:
+            self._reset_all_streaming_state()
+            self._flush_pipeline_on_next_dsp_frame = False
 
         t0 = time.perf_counter()
 
