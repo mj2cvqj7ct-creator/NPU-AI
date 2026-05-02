@@ -153,12 +153,14 @@ class NPUEngine:
             if self.config.enable_profiling:
                 sess_options.enable_profiling = True
 
-            providers = [self._active_provider.value]
-            if self._active_provider != ExecutionProvider.CPU:
+            active = self._active_provider
+            assert active is not None  # guarded by is_available
+            providers = [active.value]
+            if active != ExecutionProvider.CPU:
                 providers.append(ExecutionProvider.CPU.value)
 
             provider_options: list[dict[str, Any]] = []
-            if self._active_provider == ExecutionProvider.NPU_DIRECTML:
+            if active == ExecutionProvider.NPU_DIRECTML:
                 provider_options.append({"device_id": self.config.device_id})
                 if ExecutionProvider.CPU.value in providers:
                     provider_options.append({})

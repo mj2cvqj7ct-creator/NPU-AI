@@ -11,6 +11,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import TypedDict
 
 import numpy as np
 
@@ -23,7 +24,13 @@ def default_model_dir() -> str:
         return os.path.join(os.path.dirname(sys.executable), "models")
     return str(Path(__file__).resolve().parents[2] / "models")
 
-MODEL_REGISTRY = {
+class _ModelRegistryEntry(TypedDict):
+    description: str
+    input_shape: list[int]
+    output_shape: list[int]
+
+
+MODEL_REGISTRY: dict[str, _ModelRegistryEntry] = {
     "source_separation": {
         "description": "Vocal/instrument source separation",
         "input_shape": [1, 1, 2049],

@@ -13,6 +13,8 @@ Advanced HRTF-based 3D positioning with:
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from scipy import signal
 
@@ -45,7 +47,7 @@ class SpatialProcessor:
         self._zi_crossfeed_r = None
         self._zi_crossfeed_hi_l = None
         self._zi_crossfeed_hi_r = None
-        self._zi_height: list | None = None
+        self._zi_height: list[Any] | None = None
         self._zi_holo: list[list | None] = []
         self._overlap_l = np.zeros(0, dtype=np.float32)
         self._overlap_r = np.zeros(0, dtype=np.float32)
@@ -389,10 +391,14 @@ class SpatialProcessor:
         return out_l, out_r
 
     def _apply_height(self, data: np.ndarray, ch_idx: int) -> np.ndarray:
+        height_sos = self._height_sos
+        zi_state = self._zi_height
+        if height_sos is None or zi_state is None:
+            return data
         filtered, zi = signal.sosfilt(
-            self._height_sos, data, zi=self._zi_height[ch_idx],
+            height_sos, data, zi=zi_state[ch_idx],
         )
-        self._zi_height[ch_idx] = zi
+        zi_state[ch_idx] = zi
         gain = 1.0 + self.height * 0.2
         return data + (filtered - data) * self.height * 0.5 * gain
 

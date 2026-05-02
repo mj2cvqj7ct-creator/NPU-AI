@@ -276,7 +276,7 @@ class AudioEnhancer:
         x = audio.astype(np.float32, copy=False)
         if use_npu:
             shaped = self._spectral_npu_ola(x)
-            x = (1.0 - blend) * x + blend * shaped
+            x = ((1.0 - blend) * x + blend * shaped).astype(np.float32, copy=False)
 
         # 1. Psychoacoustic bass
         if self.bass_boost > 0:

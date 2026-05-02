@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from scipy import signal
@@ -57,7 +58,7 @@ class SourceSeparator:
     ):
         self.sample_rate = sample_rate
         self.config = config or SeparationConfig()
-        self._npu_engine = None
+        self._npu_engine: Any = None
 
         self._window = signal.windows.hann(
             self.config.fft_size, sym=False,

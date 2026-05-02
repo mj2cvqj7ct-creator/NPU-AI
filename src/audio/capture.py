@@ -14,6 +14,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 import numpy as np
 
@@ -115,9 +116,9 @@ class AudioFormat:
     is_float: bool = True
 
     @property
-    def dtype(self) -> np.dtype:
+    def dtype(self) -> np.dtype[Any]:
         if self.is_float:
-            return np.float32 if self.bit_depth == 32 else np.float64
+            return np.dtype(np.float32 if self.bit_depth == 32 else np.float64)
         return np.dtype(f"int{self.bit_depth}")
 
     @property
@@ -151,8 +152,8 @@ class WASAPICapture:
         self._capture_thread: threading.Thread | None = None
         self._callbacks: list[Callable[[np.ndarray], None]] = []
         self._lock = threading.Lock()
-        self._stream = None
-        self._wasapi_client = None
+        self._stream: Any = None
+        self._wasapi_client: Any = None
         # Set by WASAPI thread from IAudioClient.GetMixFormat (authoritative)
         self._actual_sample_rate: int | None = None
 

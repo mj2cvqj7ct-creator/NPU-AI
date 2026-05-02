@@ -11,7 +11,7 @@ import logging
 import queue
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -44,7 +44,7 @@ class AudioOutput:
         self._output_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=512)
         self._is_playing = False
         self._output_thread: threading.Thread | None = None
-        self._stream = None
+        self._stream: Any = None
         self._lock = threading.Lock()
         self._volume = 1.0
         self._muted = False

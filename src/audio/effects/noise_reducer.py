@@ -158,7 +158,7 @@ class NPUNoiseReducer:
 
                 m = self._mask_ema
                 # High mask = attenuate (treat model output as noise confidence).
-                atten = 1.0 - blend * (0.08 + 0.92 * m)
+                atten = (1.0 - blend * (0.08 + 0.92 * m)).astype(np.float32, copy=False)
                 np.clip(atten, 0.04, 1.0, out=atten)
 
             timed = np.zeros((self._nr_fft, n_ch), dtype=np.float64)
