@@ -7,6 +7,7 @@ Supports exclusive mode for minimum latency with the SABAJ A20D USB DAC.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import queue
 import threading
@@ -166,46 +167,59 @@ class WASAPICapture:
             if callback in self._callbacks:
                 self._callbacks.remove(callback)
 
-    def _initialize_wasapi(self) -> bool:
-        """Initialize WASAPI loopback capture via comtypes/pycaw."""
+    def _attempt_wasapi_setup_on_capture_thread(self) -> bool:
+        """Create IAudioClient on the capture thread (required for COM STA).
+
+        Must be called only from the audio capture thread, not from the UI thread.
+        """
+        self._wasapi_client = None
         try:
             import comtypes
             from pycaw.pycaw import AudioUtilities, IAudioClient, IMMDeviceEnumerator
 
             comtypes.CoInitialize()
+            try:
+                enumerator = comtypes.CoCreateInstance(
+                    comtypes.GUID("{BCDE0395-E52F-467C-8E3D-C4579291692E}"),
+                    IMMDeviceEnumerator,
+                    comtypes.CLSCTX_ALL,
+                )
 
-            enumerator = comtypes.CoCreateInstance(
-                comtypes.GUID("{BCDE0395-E52F-467C-8E3D-C4579291692E}"),
-                IMMDeviceEnumerator,
-                comtypes.CLSCTX_ALL,
-            )
-
-            if self.config.device_name:
-                devices = AudioUtilities.GetAllDevices()
-                device = None
-                for d in devices:
-                    if self.config.device_name.lower() in d.FriendlyName.lower():
-                        device = d
-                        break
-                if device is None:
-                    logger.warning(
-                        "Device '%s' not found, using default", self.config.device_name
-                    )
-                    device = enumerator.GetDefaultAudioEndpoint(0, 1)
+                if self.config.device_name:
+                    devices = AudioUtilities.GetAllDevices()
+                    device = None
+                    for d in devices:
+                        if self.config.device_name.lower() in d.FriendlyName.lower():
+                            device = d
+                            break
+                    if device is None:
+                        logger.warning(
+                            "Device '%s' not found, using default",
+                            self.config.device_name,
+                        )
+                        device = enumerator.GetDefaultAudioEndpoint(0, 1)
+                    else:
+                        device = device._dev
                 else:
-                    device = device._dev
-            else:
-                device = enumerator.GetDefaultAudioEndpoint(0, 1)
+                    device = enumerator.GetDefaultAudioEndpoint(0, 1)
 
-            self._wasapi_client = device.Activate(IAudioClient._iid_, comtypes.CLSCTX_ALL, None)
-            logger.info("WASAPI loopback initialized successfully")
-            return True
-
+                self._wasapi_client = device.Activate(
+                    IAudioClient._iid_, comtypes.CLSCTX_ALL, None,
+                )
+                logger.info("WASAPI loopback client created on capture thread")
+                return True
+            except Exception:
+                comtypes.CoUninitialize()
+                raise
         except ImportError:
-            logger.info("WASAPI not available (non-Windows platform), using sounddevice fallback")
+            logger.info(
+                "WASAPI not available (non-Windows platform), using sounddevice fallback",
+            )
             return False
         except Exception as e:
-            logger.warning("WASAPI initialization failed: %s, using sounddevice fallback", e)
+            logger.warning(
+                "WASAPI initialization failed: %s, using sounddevice fallback", e,
+            )
             return False
 
     def _initialize_sounddevice(self) -> None:
@@ -215,18 +229,22 @@ class WASAPICapture:
         device_info = sd.query_devices(kind="input")
         logger.info("Using sounddevice capture: %s", device_info.get("name", "default"))
 
+    def _run_capture_worker(self) -> None:
+        """Entry point: COM + IAudioClient must live on this thread."""
+        if self._attempt_wasapi_setup_on_capture_thread():
+            self._capture_loop_wasapi()
+        else:
+            self._initialize_sounddevice()
+            self._capture_loop_sounddevice()
+
     def start(self) -> None:
         if self._is_capturing:
             return
 
         self._is_capturing = True
-        wasapi_ok = self._initialize_wasapi()
-
-        if not wasapi_ok:
-            self._initialize_sounddevice()
 
         self._capture_thread = threading.Thread(
-            target=self._capture_loop_sounddevice if not wasapi_ok else self._capture_loop_wasapi,
+            target=self._run_capture_worker,
             daemon=True,
             name="AudioCapture",
         )
@@ -267,11 +285,14 @@ class WASAPICapture:
             except Exception:
                 pass
             self._stream = None
+        self._wasapi_client = None
         self._actual_sample_rate = None
         logger.info("Audio capture stopped")
 
     def _capture_loop_wasapi(self) -> None:
         """Main WASAPI capture loop using COM audio capture client."""
+        import comtypes
+
         try:
             import ctypes
             import time
@@ -283,13 +304,23 @@ class WASAPICapture:
             REFTIMES_PER_SEC = 10_000_000
 
             client = self._wasapi_client
+            if client is None:
+                logger.error("WASAPI client missing; cannot capture")
+                return
             mix_format = client.GetMixFormat()
             mix_rate = int(mix_format.contents.nSamplesPerSec)
             mix_ch = int(mix_format.contents.nChannels)
+            bits = int(getattr(mix_format.contents, "wBitsPerSample", 32))
+            block_align = int(getattr(mix_format.contents, "nBlockAlign", 0))
+            if block_align <= 0:
+                block_align = max(1, mix_ch * (bits // 8))
+            bytes_per_frame = block_align
             with self._lock:
                 self._actual_sample_rate = mix_rate
             self.config.format.sample_rate = mix_rate
-            logger.info("WASAPI mix format: %d Hz, %d ch", mix_rate, mix_ch)
+            self.config.format.channels = mix_ch
+            self.config.format.bit_depth = bits
+            logger.info("WASAPI mix format: %d Hz, %d ch, %d-bit", mix_rate, mix_ch, bits)
             buffer_duration_hns = int(
                 REFTIMES_PER_SEC * self.config.buffer_size_ms / 1000
             )
@@ -318,17 +349,24 @@ class WASAPICapture:
                         data_ptr, num_frames, flags, _, _ = capture_client.GetBuffer()
 
                         if num_frames > 0 and data_ptr:
-                            byte_count = num_frames * channels * 4  # float32
+                            byte_count = num_frames * bytes_per_frame
                             raw = (ctypes.c_byte * byte_count).from_address(data_ptr)
-                            audio_data = np.frombuffer(raw, dtype=np.float32).reshape(
-                                num_frames, channels
-                            ).copy()
-                            if channels > 2:
-                                audio_data = audio_data[:, :2]
-                            elif channels == 1:
-                                c0 = audio_data[:, 0]
-                                audio_data = np.column_stack([c0, c0])
-                            self._dispatch_audio(audio_data)
+                            if bits == 32 and byte_count == num_frames * channels * 4:
+                                audio_data = np.frombuffer(
+                                    raw, dtype=np.float32,
+                                ).reshape(num_frames, channels).copy()
+                                if channels > 2:
+                                    audio_data = audio_data[:, :2]
+                                elif channels == 1:
+                                    c0 = audio_data[:, 0]
+                                    audio_data = np.column_stack([c0, c0])
+                                self._dispatch_audio(audio_data)
+                            else:
+                                logger.warning(
+                                    "WASAPI mix: %d-bit, %d B/frame; skip (need float32)",
+                                    bits,
+                                    bytes_per_frame,
+                                )
 
                         capture_client.ReleaseBuffer(num_frames)
                         packet_length = capture_client.GetNextPacketSize()
@@ -344,6 +382,10 @@ class WASAPICapture:
         except Exception as e:
             logger.warning("WASAPI COM capture failed, falling back to sounddevice: %s", e)
             self._capture_loop_sounddevice()
+        finally:
+            self._wasapi_client = None
+            with contextlib.suppress(Exception):
+                comtypes.CoUninitialize()
 
     def _capture_loop_sounddevice(self) -> None:
         """Sounddevice fallback capture loop."""
