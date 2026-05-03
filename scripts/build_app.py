@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 
 if not getattr(sys, "frozen", False):
@@ -39,17 +40,21 @@ def main() -> int:
     venv_dir, pip_exe, python_exe = ensure_venv(project_dir)
     print("[OK] Virtual environment ready")
 
-    # Step 2: Install dependencies
+    # Step 2: Install dependencies (Windows EXE: slim set matches CI / PyInstaller)
     print_step(2, total, "Installing dependencies...")
     run_cmd([pip_exe, "install", "--upgrade", "pip"], check=False)
-    rc = run_cmd([pip_exe, "install", "-r", "requirements.txt"])
+    req_file = "requirements.txt"
+    if sys.platform == "win32" and os.path.isfile("requirements-windows-build.txt"):
+        req_file = "requirements-windows-build.txt"
+        print(f"[INFO] Using {req_file} (no torch; same set as GitHub Windows build)")
+    rc = run_cmd([pip_exe, "install", "-r", req_file])
     if rc != 0:
         print("[ERROR] Failed to install dependencies")
         pause_exit(1)
     print("[OK] Dependencies installed")
 
-    # Step 3: ONNX Runtime
-    print_step(3, total, "Installing ONNX Runtime DirectML for ARM64...")
+    # Step 3: ONNX Runtime (no-op if already in requirements file)
+    print_step(3, total, "Ensuring ONNX Runtime DirectML...")
     run_cmd([pip_exe, "install", "onnxruntime-directml"], check=False)
 
     # Step 4: Setup resources
@@ -81,28 +86,30 @@ def main() -> int:
         print("[ERROR] PyInstaller build failed")
         pause_exit(1)
 
-    exe_path = os.path.join("dist", "NPU_Audio_Enhancer", "NPU_Audio_Enhancer.exe")
+    bundle_dir = os.path.join(project_dir, "dist", "NPU_Audio_Enhancer")
+    exe_path = os.path.join(bundle_dir, "NPU_Audio_Enhancer.exe")
     if not os.path.isfile(exe_path):
         print(f"[ERROR] EXE not found at: {exe_path}")
         pause_exit(1)
 
-    # Copy to Desktop\NPU-AI-main
-    import shutil
-
+    # PyInstaller one-folder: copy the entire bundle (DLLs next to the EXE).
     desktop = get_desktop_path()
-    output_dir = os.path.join(desktop, "NPU-AI-main")
-    os.makedirs(output_dir, exist_ok=True)
+    dest_name = os.environ.get("NPU_AE_DESKTOP_DIR", "NPU_Audio_Enhancer")
+    output_dir = os.path.join(desktop, dest_name)
     try:
+        if os.path.isdir(output_dir):
+            shutil.rmtree(output_dir)
+        shutil.copytree(bundle_dir, output_dir)
         dest_exe = os.path.join(output_dir, "NPU_Audio_Enhancer.exe")
-        shutil.copy2(exe_path, dest_exe)
-        print(f"[OK] EXE copied to: {dest_exe}")
+        print(f"[OK] App folder copied to: {output_dir}")
+        print(f"[OK] Run: {dest_exe}")
     except Exception as e:
-        print(f"[WARNING] Could not copy to desktop: {e}")
-        print(f"[INFO] EXE available at: {exe_path}")
+        print(f"[WARNING] Could not copy bundle to desktop: {e}")
+        print(f"[INFO] Run from build output: {exe_path}")
 
     print_header("Build Complete!")
-    print(f"  Output: {output_dir}")
-    print(f"  EXE:   {exe_path}")
+    print(f"  Desktop folder: {output_dir}")
+    print(f"  Build output:   {bundle_dir}")
     pause_exit(0)
     return 0
 
