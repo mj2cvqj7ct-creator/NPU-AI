@@ -8,7 +8,8 @@ from pathlib import Path
 
 
 def _feature_rows_keys_from_source() -> set[str]:
-    path = Path(__file__).resolve().parent.parent / "src" / "ui" / "widgets" / "recommender_panel.py"
+    root = Path(__file__).resolve().parent.parent
+    path = root / "src" / "ui" / "widgets" / "recommender_panel.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
