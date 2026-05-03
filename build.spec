@@ -2,12 +2,16 @@
 """
 PyInstaller spec file for NPU Audio Enhancer.
 Build with: pyinstaller build.spec
+
+PyInstaller executes the spec without defining __file__; use SPECPATH (spec dir).
 """
 
+import os
 import sys
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parent
+# SPECPATH is set by PyInstaller to the directory containing this spec file.
+_REPO_ROOT = Path(os.path.abspath(SPECPATH))
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 _models_dir = _REPO_ROOT / "models"
@@ -24,9 +28,15 @@ except Exception as exc:
 
 block_cipher = None
 
+_MAIN = str(_REPO_ROOT / "src" / "main.py")
+_APP_ICO = _REPO_ROOT / "resources" / "icons" / "app.ico"
+_exe_icon_kw = {}
+if _APP_ICO.is_file():
+    _exe_icon_kw = {"icon": str(_APP_ICO)}
+
 a = Analysis(
-    ['src/main.py'],
-    pathex=['.'],
+    [_MAIN],
+    pathex=[str(_REPO_ROOT)],
     binaries=[],
     datas=[
         ('resources', 'resources'),
@@ -83,8 +93,7 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch='arm64',
-    icon='resources/icons/app.ico',
+    **_exe_icon_kw,
 )
 
 coll = COLLECT(
