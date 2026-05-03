@@ -30,5 +30,5 @@ installer/output/
 
 # Local / Cursor workspace copy of Windows PyInstaller bundle (do not commit)
 NPUオーディオ作成アプリ/
-Windows_EXE_Release/
+# Only ignore the large zip so Windows_EXE_Release/ is visible in Explorer (was fully ignored → looked empty)
 Windows_EXE_Release.zip
