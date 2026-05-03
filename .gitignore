@@ -27,3 +27,7 @@ data/
 *.spec.bak
 
 installer/output/
+
+# Windows bundle fetched into workspace (see scripts/fetch_windows_release_zip.py)
+NPU_Audio_Enhancer_windows.zip
+Windows_EXE_Release/
