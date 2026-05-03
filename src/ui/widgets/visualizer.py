@@ -267,10 +267,10 @@ class StemLevelMeters(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.meters = {
-            "vocals": StemMeter("Vocals", QColor(162, 155, 254)),
-            "drums": StemMeter("Drums", QColor(225, 112, 85)),
-            "bass": StemMeter("Bass", QColor(0, 206, 201)),
-            "other": StemMeter("Other", QColor(85, 239, 196)),
+            "vocals": StemMeter("ボーカル", QColor(162, 155, 254)),
+            "drums": StemMeter("ドラム", QColor(225, 112, 85)),
+            "bass": StemMeter("ベース", QColor(0, 206, 201)),
+            "other": StemMeter("その他", QColor(85, 239, 196)),
         }
 
         for meter in self.meters.values():
