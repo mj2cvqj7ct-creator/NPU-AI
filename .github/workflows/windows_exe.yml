@@ -1,5 +1,9 @@
 name: Windows EXE (PyInstaller)
 
+# Build Windows bundle and (on main / manual) attach zip to GitHub Releases for easy download.
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
   push:
@@ -14,9 +18,9 @@ jobs:
   pyinstaller:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -26,7 +30,8 @@ jobs:
           pip install -r requirements-windows-build.txt
 
       - name: Ensure models directory
-        run: mkdir models
+        shell: pwsh
+        run: New-Item -ItemType Directory -Path models -Force | Out-Null
 
       - name: Build with PyInstaller
         run: pyinstaller build.spec --noconfirm
@@ -37,8 +42,36 @@ jobs:
           Compress-Archive -Path "dist/NPU_Audio_Enhancer" -DestinationPath "NPU_Audio_Enhancer_windows.zip" -Force
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: NPU_Audio_Enhancer_windows
           path: NPU_Audio_Enhancer_windows.zip
-          retention-days: 14
+          retention-days: 30
+
+  publish_release:
+    needs: pyinstaller
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows zip
+        uses: actions/download-artifact@v6
+        with:
+          name: NPU_Audio_Enhancer_windows
+          path: release-asset
+
+      - name: Publish to GitHub Releases
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: release-asset/NPU_Audio_Enhancer_windows.zip
+          name: Windows EXE (rolling)
+          tag: windows-exe
+          allowUpdates: true
+          replacesArtifacts: true
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
+          body: |
+            **NPU オーディオエンハンサー — Windows x64 ビルド（PyInstaller）**
+
+            - ダウンロード: `NPU_Audio_Enhancer_windows.zip` を展開し、フォルダ内の `NPU_Audio_Enhancer.exe` を実行してください。
+            - このリリースは `main` への push または「Actions → Windows EXE → Run workflow」で更新されます。
+            - Windows Defender が警告する場合は「詳細情報」から実行を許可するか、ZIP を右クリック → プロパティでブロック解除してください。
