@@ -23,17 +23,7 @@ EXE_TARGETS = [
 
 
 def get_desktop_path() -> str:
-    """Get user's Desktop path."""
-    if sys.platform == "win32":
-        try:
-            import ctypes.wintypes
-
-            buf = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
-            ctypes.windll.shell32.SHGetFolderPathW(None, 0x0010, None, 0, buf)  # type: ignore[union-attr]
-            if buf.value:
-                return buf.value
-        except Exception:
-            pass
+    """User Desktop: ~/Desktop (same as scripts.common.get_desktop_path)."""
     return os.path.join(os.path.expanduser("~"), "Desktop")
 
 
