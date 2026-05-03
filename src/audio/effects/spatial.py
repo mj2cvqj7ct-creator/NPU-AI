@@ -13,6 +13,8 @@ Advanced HRTF-based 3D positioning with:
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from scipy import signal
 
@@ -45,8 +47,8 @@ class SpatialProcessor:
         self._zi_crossfeed_r = None
         self._zi_crossfeed_hi_l = None
         self._zi_crossfeed_hi_r = None
-        self._zi_height: list | None = None
-        self._zi_holo: list[list | None] = []
+        self._zi_height: list[Any] | None = None
+        self._zi_holo: list[list[Any] | None] = []
         self._overlap_l = np.zeros(0, dtype=np.float32)
         self._overlap_r = np.zeros(0, dtype=np.float32)
 
@@ -62,14 +64,31 @@ class SpatialProcessor:
 
         self._build_filters()
 
+    _TUNABLE_KEYS = frozenset({
+        "soundstage_width",
+        "depth",
+        "height",
+        "holographic_intensity",
+        "crossfeed_level",
+        "center_focus",
+        "stereo_enhance",
+        "immersion",
+    })
+
     def update_parameters(self, **kwargs: float) -> None:
         changed = False
         for key, value in kwargs.items():
+            if key not in self._TUNABLE_KEYS:
+                continue
             if hasattr(self, key) and getattr(self, key) != value:
                 setattr(self, key, value)
                 changed = True
         if changed:
             self._build_filters()
+
+    def reset_streaming_state(self) -> None:
+        """Re-init FIR overlap, IIR zi, and allpass rings when spatial is pipeline-bypassed."""
+        self._build_filters()
 
     # ------------------------------------------------------------------
     # Filter generation
@@ -211,7 +230,7 @@ class SpatialProcessor:
         self._allpass_buffers_r = []
         self._allpass_indices_l: list[int] = []
         self._allpass_indices_r: list[int] = []
-        for delay_ms, coeff in zip(delay_ms_list, coeffs):
+        for delay_ms, coeff in zip(delay_ms_list, coeffs, strict=True):
             delay = max(1, int(delay_ms * self.sample_rate / 1000))
             self._allpass_coeffs.append((coeff, delay))
             self._allpass_buffers_l.append(np.zeros(delay, dtype=np.float64))
@@ -372,12 +391,16 @@ class SpatialProcessor:
         return out_l, out_r
 
     def _apply_height(self, data: np.ndarray, ch_idx: int) -> np.ndarray:
+        height_sos = self._height_sos
+        zi_state = self._zi_height
+        if height_sos is None or zi_state is None:
+            return data
         filtered, zi = signal.sosfilt(
-            self._height_sos, data, zi=self._zi_height[ch_idx],
+            height_sos, data, zi=zi_state[ch_idx],
         )
-        self._zi_height[ch_idx] = zi
+        zi_state[ch_idx] = zi
         gain = 1.0 + self.height * 0.2
-        return data + (filtered - data) * self.height * 0.5 * gain
+        return np.asarray(data + (filtered - data) * self.height * 0.5 * gain, dtype=np.float32)
 
     def _apply_allpass(self, data: np.ndarray, is_left: bool) -> np.ndarray:
         """Schroeder allpass diffuser chain for spatial thickening."""

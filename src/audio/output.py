@@ -11,12 +11,9 @@ import logging
 import queue
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Any
 
 import numpy as np
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -44,19 +41,21 @@ class AudioOutput:
         self._output_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=512)
         self._is_playing = False
         self._output_thread: threading.Thread | None = None
-        self._stream = None
+        self._stream: Any = None
         self._lock = threading.Lock()
         self._volume = 1.0
         self._muted = False
 
         self._underrun_count = 0
         self._total_frames = 0
+        self._carry_buf: np.ndarray | None = None
 
     def start(self) -> None:
         if self._is_playing:
             return
 
         self._is_playing = True
+        self._carry_buf = None
         self._output_thread = threading.Thread(
             target=self._output_loop,
             daemon=True,
@@ -83,7 +82,28 @@ class AudioOutput:
             except Exception:
                 pass
             self._stream = None
+        while True:
+            try:
+                self._output_queue.get_nowait()
+            except queue.Empty:
+                break
+        self._carry_buf = None
         logger.info("Audio output stopped (underruns: %d)", self._underrun_count)
+
+    def apply_config(self, config: OutputConfig) -> None:
+        """Replace output config and recreate the stream if already playing."""
+        was_playing = self._is_playing
+        if was_playing:
+            self.stop()
+        self.config = config
+        if was_playing:
+            self.start()
+        logger.info(
+            "Output config applied: %dHz, buffer=%dms, exclusive=%s",
+            self.config.sample_rate,
+            self.config.buffer_size_ms,
+            self.config.exclusive_mode,
+        )
 
     def write(self, audio_data: np.ndarray) -> None:
         """Queue audio data for output."""
@@ -92,8 +112,10 @@ class AudioOutput:
 
         if self._muted:
             audio_data = np.zeros_like(audio_data)
-        else:
-            audio_data = audio_data * self._volume
+        # Do not scale by self._volume here: the DSP pipeline applies master_gain;
+        # scaling twice made the Master slider non-linear (gain²).
+
+        audio_data = np.ascontiguousarray(audio_data, dtype=np.float32)
 
         try:
             self._output_queue.put_nowait(audio_data)
@@ -108,22 +130,54 @@ class AudioOutput:
 
         device = self._find_output_device()
 
-        def output_callback(outdata: np.ndarray, frames: int, time_info, status) -> None:
+        def output_callback(
+            outdata: np.ndarray,
+            frames: int,
+            time_info: Any,
+            status: Any,
+        ) -> None:
             if status:
                 logger.debug("Output status: %s", status)
                 if status.output_underflow:
                     self._underrun_count += 1
 
-            try:
-                data = self._output_queue.get_nowait()
-                if data.shape[0] >= frames:
-                    outdata[:] = data[:frames]
-                else:
-                    outdata[: data.shape[0]] = data
-                    outdata[data.shape[0] :] = 0
-                self._total_frames += frames
-            except queue.Empty:
-                outdata[:] = 0
+            ch = int(outdata.shape[1])
+            pos = 0
+            while pos < frames:
+                if self._carry_buf is not None and self._carry_buf.shape[0] > 0:
+                    blk = self._carry_buf
+                    n_take = min(frames - pos, blk.shape[0])
+                    outdata[pos : pos + n_take] = blk[:n_take]
+                    pos += n_take
+                    if n_take < blk.shape[0]:
+                        self._carry_buf = blk[n_take:].copy()
+                    else:
+                        self._carry_buf = None
+                    continue
+
+                try:
+                    data = self._output_queue.get_nowait()
+                except queue.Empty:
+                    outdata[pos:] = 0
+                    break
+
+                if data.ndim == 1:
+                    data = np.column_stack([data, data])
+                if data.size == 0 or data.shape[0] == 0:
+                    continue
+                if data.shape[1] != ch:
+                    if data.shape[1] == 1 and ch > 1:
+                        data = np.repeat(data, ch, axis=1)
+                    else:
+                        data = data[:, :ch]
+
+                n_take = min(frames - pos, data.shape[0])
+                outdata[pos : pos + n_take] = data[:n_take]
+                pos += n_take
+                if data.shape[0] > n_take:
+                    self._carry_buf = data[n_take:].copy()
+
+            self._total_frames += frames
 
         try:
             self._stream = sd.OutputStream(
@@ -182,7 +236,7 @@ class AudioOutput:
         self._muted = value
 
     @property
-    def stats(self) -> dict:
+    def stats(self) -> dict[str, int | bool]:
         return {
             "total_frames": self._total_frames,
             "underrun_count": self._underrun_count,
@@ -191,7 +245,7 @@ class AudioOutput:
         }
 
     @staticmethod
-    def list_output_devices() -> list[dict]:
+    def list_output_devices() -> list[dict[str, Any]]:
         """List available audio output devices."""
         try:
             import sounddevice as sd

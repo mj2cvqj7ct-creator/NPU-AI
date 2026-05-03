@@ -9,8 +9,17 @@ loudness normalization with true-peak limiting.
 
 from __future__ import annotations
 
+import logging
+from typing import Any
+
 import numpy as np
 from scipy import signal
+
+logger = logging.getLogger(__name__)
+
+# Must match MODEL_REGISTRY["audio_enhance"] frequency bins (fft_size // 2 + 1).
+_ENH_FFT = 4096
+_ENH_HOP = 1024
 
 
 class AudioEnhancer:
@@ -18,7 +27,18 @@ class AudioEnhancer:
 
     def __init__(self, sample_rate: int = 48000):
         self.sample_rate = sample_rate
-        self.enabled = True
+        self._enhancer_enabled = True
+        self.npu_blend = 0.35  # 0=DSP only, 1=full NPU spectral mix-in
+        self._npu_engine: Any | None = None
+
+        # STFT state for NPU path (overlap-add); reset when blend→0 or channel count changes
+        self._en_fft = _ENH_FFT
+        self._en_hop = _ENH_HOP
+        self._en_window = signal.windows.hann(self._en_fft, sym=False).astype(np.float32)
+        self._en_syn = self._create_synthesis_window()
+        self._ola_buf: np.ndarray | None = None
+        self._in_carry: np.ndarray | None = None
+        self._out_fifo: list[np.ndarray] = []
 
         # Enhancement parameters
         self.warmth = 0.3
@@ -31,6 +51,150 @@ class AudioEnhancer:
         self.loudness_target = -14.0  # LUFS
 
         self._build_processing_chain()
+
+    _TUNABLE_KEYS = frozenset({
+        "warmth",
+        "clarity",
+        "presence",
+        "air",
+        "bass_boost",
+        "exciter",
+        "stereo_width",
+        "npu_blend",
+        "loudness_target",
+    })
+
+    @property
+    def enabled(self) -> bool:
+        return self._enhancer_enabled
+
+    @enabled.setter
+    def enabled(self, value: bool) -> None:
+        v = bool(value)
+        if not v and self._enhancer_enabled:
+            self._reset_npu_ola_state()
+        self._enhancer_enabled = v
+
+    def set_npu_engine(self, engine: object | None) -> None:
+        self._npu_engine = engine
+        self._reset_npu_ola_state()
+        if engine is not None:
+            logger.info("NPU engine connected to audio enhancer")
+
+    def _create_synthesis_window(self) -> np.ndarray:
+        w = self._en_window.copy()
+        hop = self._en_hop
+        fft_size = self._en_fft
+        denom = np.zeros(fft_size, dtype=np.float32)
+        for i in range(0, fft_size, hop):
+            end = min(i + fft_size, fft_size)
+            denom[i:end] += w[: end - i] ** 2
+        denom = np.maximum(denom, 1e-8)
+        return np.asarray(w / denom[:fft_size], dtype=np.float32)
+
+    def _reset_npu_ola_state(self) -> None:
+        self._ola_buf = None
+        self._in_carry = None
+        self._out_fifo = []
+
+    def _ensure_npu_ola(self, n_ch: int) -> None:
+        if (
+            self._ola_buf is None
+            or self._in_carry is None
+            or self._ola_buf.shape[1] != n_ch
+        ):
+            self._ola_buf = np.zeros((self._en_fft, n_ch), dtype=np.float64)
+            self._in_carry = np.zeros((0, n_ch), dtype=np.float32)
+            self._out_fifo = []
+
+    def _take_npu_fifo(
+        self,
+        n_rows: int,
+        n_ch: int,
+        passthrough: np.ndarray,
+    ) -> np.ndarray:
+        """Drain OLA output; until the ring has produced `n_rows` samples, use dry input."""
+        out = np.zeros((n_rows, n_ch), dtype=np.float32)
+        filled = 0
+        while filled < n_rows and self._out_fifo:
+            block = self._out_fifo[0]
+            take = min(n_rows - filled, block.shape[0])
+            out[filled : filled + take] = block[:take].astype(np.float32, copy=False)
+            if take >= block.shape[0]:
+                self._out_fifo.pop(0)
+            else:
+                self._out_fifo[0] = block[take:]
+            filled += take
+        if filled < n_rows:
+            out[filled:] = passthrough[filled:].astype(np.float32, copy=False)
+        return out
+
+    def _spectral_npu_ola(self, audio: np.ndarray) -> np.ndarray:
+        """STFT-domain gain from ONNX `audio_enhance`, overlap-add; keeps per-channel phase."""
+        n_ch = audio.shape[1]
+        self._ensure_npu_ola(n_ch)
+        assert self._ola_buf is not None and self._in_carry is not None
+
+        buf = np.vstack([self._in_carry, audio.astype(np.float32)])
+        w = self._en_window
+        ws = self._en_syn
+        n_bins = self._en_fft // 2 + 1
+
+        while buf.shape[0] >= self._en_fft:
+            frame = buf[: self._en_fft].copy()
+            buf = buf[self._en_hop :]
+            mono = np.mean(frame, axis=1)
+            spec0 = np.fft.rfft(mono * w)
+            mag0 = np.abs(spec0).astype(np.float32)
+            if mag0.shape[0] != n_bins:
+                logger.debug("Enhancer STFT bin mismatch: %s", mag0.shape)
+                mag0 = np.resize(mag0, n_bins).astype(np.float32)
+
+            inp = mag0.reshape(1, 1, -1)
+            curve = None
+            if self._npu_engine is not None:
+                curve = self._npu_engine.infer("audio_enhance", inp)
+
+            if curve is not None:
+                c = np.asarray(curve, dtype=np.float32).reshape(-1)
+                if c.size >= n_bins:
+                    g = c[:n_bins]
+                else:
+                    g = np.full(n_bins, 0.5, dtype=np.float32)
+            else:
+                g = np.full(n_bins, 0.5, dtype=np.float32)
+
+            intensity = float(np.clip(self.npu_blend, 0.0, 1.0))
+            spec_gain = 1.0 + (g - 0.5) * 2.0 * (0.1 + 0.55 * intensity)
+            np.clip(spec_gain, 0.2, 5.0, out=spec_gain)
+
+            timed = np.zeros((self._en_fft, n_ch), dtype=np.float64)
+            for ch in range(n_ch):
+                X = np.fft.rfft(frame[:, ch] * w)
+                mag_c = np.abs(X)
+                ang = np.angle(X)
+                nb = min(mag_c.shape[0], spec_gain.shape[0])
+                new_mag = mag_c[:nb] * spec_gain[:nb]
+                if mag_c.shape[0] > nb:
+                    new_mag = np.concatenate(
+                        [new_mag, mag_c[nb:]],
+                    )
+                Y = new_mag * np.exp(1j * ang)
+                t = np.fft.irfft(Y, n=self._en_fft).real.astype(np.float64) * ws
+                timed[:, ch] = t
+
+            self._ola_buf += timed
+            hop_block = self._ola_buf[: self._en_hop].astype(np.float32, copy=True)
+            self._out_fifo.append(hop_block)
+            self._ola_buf = np.roll(self._ola_buf, -self._en_hop, axis=0)
+            self._ola_buf[-self._en_hop :, :] = 0.0
+
+        self._in_carry = buf
+        return self._take_npu_fifo(audio.shape[0], n_ch, audio)
+
+    def reset_streaming_state(self) -> None:
+        """Clear overlap-add buffers (call when stage bypassed to avoid stale state)."""
+        self._reset_npu_ola_state()
 
     def _build_processing_chain(self) -> None:
         self._multiband = self._create_multiband_filters()
@@ -101,32 +265,43 @@ class AudioEnhancer:
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         if not self.enabled or audio.shape[0] == 0:
+            self._reset_npu_ola_state()
             return audio
+
+        if audio.ndim == 1:
+            audio = np.column_stack([audio, audio])
+
+        blend = float(np.clip(self.npu_blend, 0.0, 1.0))
+        use_npu = blend > 1e-5 and self._npu_engine is not None
+        x = audio.astype(np.float32, copy=False)
+        if use_npu:
+            shaped = self._spectral_npu_ola(x)
+            x = ((1.0 - blend) * x + blend * shaped).astype(np.float32, copy=False)
 
         # 1. Psychoacoustic bass
         if self.bass_boost > 0:
-            audio = self._bass_enhancer.process(audio, self.bass_boost)
+            x = self._bass_enhancer.process(x, self.bass_boost)
 
         # 2. Multi-band EQ
-        audio = self._apply_multiband_eq(audio)
+        x = self._apply_multiband_eq(x)
 
         # 3. Transient shaping
-        audio = self._transient_shaper.process(audio)
+        x = self._transient_shaper.process(x)
 
         # 4. Harmonic exciter
-        audio = self._harmonic.process(audio)
+        x = self._harmonic.process(x)
 
         # 5. Multi-band compression
-        audio = self._dynamics.process(audio)
+        x = self._dynamics.process(x)
 
         # 6. Stereo width adjustment
-        if self.stereo_width != 0.0 and audio.ndim == 2:
-            audio = self._adjust_stereo_width(audio)
+        if self.stereo_width != 0.0 and x.ndim == 2:
+            x = self._adjust_stereo_width(x)
 
         # 7. LUFS normalization with smoothing
-        audio = self._apply_loudness_normalization(audio)
+        x = self._apply_loudness_normalization(x)
 
-        return audio.astype(np.float32)
+        return x.astype(np.float32)
 
     def _apply_multiband_eq(self, audio: np.ndarray) -> np.ndarray:
         output = np.zeros_like(audio, dtype=np.float64)
@@ -158,15 +333,20 @@ class AudioEnhancer:
         avg_lufs = np.mean(self._lufs_history)
 
         gain_db = np.clip(self.loudness_target - avg_lufs, -6.0, 6.0)
-        return audio * (10 ** (gain_db / 20.0))
+        return np.asarray(audio * (10 ** (gain_db / 20.0)), dtype=np.float32)
 
-    def update_parameters(self, **kwargs: float) -> None:
+    def update_parameters(self, **kwargs: object) -> None:
+        prev_blend = self.npu_blend
         changed = False
         for key, value in kwargs.items():
+            if key == "enabled" or key not in self._TUNABLE_KEYS:
+                continue
             if hasattr(self, key) and getattr(self, key) != value:
                 setattr(self, key, value)
                 changed = True
         if changed:
+            if self.npu_blend <= 1e-5 and prev_blend > 1e-5:
+                self._reset_npu_ola_state()
             self._build_processing_chain()
 
 

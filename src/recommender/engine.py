@@ -273,7 +273,7 @@ class RecommendationEngine:
         """Extract chroma features (pitch class distribution)."""
         chroma = np.zeros(12, dtype=np.float64)
 
-        for i, (mag, freq) in enumerate(zip(spectrum, freqs)):
+        for _i, (mag, freq) in enumerate(zip(spectrum, freqs, strict=True)):
             if freq < 30 or freq > 5000:
                 continue
             # Map frequency to pitch class

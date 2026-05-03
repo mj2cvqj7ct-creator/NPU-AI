@@ -17,6 +17,7 @@ import numpy as np
 
 from src.audio.effects.depth import DepthProcessor
 from src.audio.effects.enhancer import AudioEnhancer
+from src.audio.effects.noise_reducer import NPUNoiseReducer
 from src.audio.effects.separator import SourceSeparator
 from src.audio.effects.spatial import SpatialProcessor
 
@@ -39,6 +40,7 @@ class ProcessorConfig:
     sample_rate: int = 48000
     channels: int = 2
     buffer_size: int = 480
+    enable_noise_reduction: bool = False
     enable_separation: bool = True
     enable_enhancement: bool = True
     enable_spatial: bool = True
@@ -51,22 +53,28 @@ class AudioProcessor:
 
     Processing chain:
     1. Input normalization
-    2. Source separation (vocals, drums, bass, instruments)
-    3. Per-stem enhancement (EQ, harmonics, compression)
-    4. Spatial audio & holographic processing (HRTF, crossfeed)
-    5. Depth & soundstage (early reflections, reverb)
-    6. Output limiting & loudness management
+    2. Optional NPU noise reduction (spectral attenuation)
+    3. Source separation (vocals, drums, bass, instruments)
+    4. Per-stem enhancement (EQ, harmonics, compression)
+    5. Spatial audio & holographic processing (HRTF, crossfeed)
+    6. Depth & soundstage (early reflections, reverb)
+    7. Output limiting & loudness management
     """
 
     def __init__(self, config: ProcessorConfig | None = None):
         self.config = config or ProcessorConfig()
         self._separator = SourceSeparator(self.config.sample_rate)
+        self._noise_reducer = NPUNoiseReducer(self.config.sample_rate)
         self._enhancer = AudioEnhancer(self.config.sample_rate)
         self._spatial = SpatialProcessor(self.config.sample_rate)
         self._depth = DepthProcessor(self.config.sample_rate)
         self._stats = ProcessorStats()
         self._bypass = False
+        self._flush_pipeline_on_next_bypass_frame = False
+        self._flush_pipeline_on_next_dsp_frame = False
         self._master_gain = 1.0
+
+        self._npu_engine_ref = None
 
         # Smoothed peak for soft-knee limiter (init at headroom for instant protection)
         self._limiter_state = 10 ** (self.config.headroom_db / 20.0)
@@ -80,6 +88,10 @@ class AudioProcessor:
     @property
     def enhancer(self) -> AudioEnhancer:
         return self._enhancer
+
+    @property
+    def noise_reducer(self) -> NPUNoiseReducer:
+        return self._noise_reducer
 
     @property
     def spatial(self) -> SpatialProcessor:
@@ -99,7 +111,27 @@ class AudioProcessor:
 
     @bypass.setter
     def bypass(self, value: bool) -> None:
-        self._bypass = value
+        v = bool(value)
+        if v != self._bypass:
+            if v:
+                # Next bypass frame resets streaming state. Also arm DSP flush so a
+                # rapid bypass-off (before any bypass audio) still clears tails on
+                # the next DSP frame.
+                self._flush_pipeline_on_next_bypass_frame = True
+                self._flush_pipeline_on_next_dsp_frame = True
+            else:
+                self._flush_pipeline_on_next_dsp_frame = True
+        self._bypass = v
+
+    def _reset_all_streaming_state(self) -> None:
+        """Clear every effect stage; safe when toggling bypass (avoid stale tails)."""
+        self._noise_reducer.reset_streaming_state()
+        self._separator.reset_streaming_state()
+        self._enhancer.reset_streaming_state()
+        self._spatial.reset_streaming_state()
+        self._depth.reset_streaming_state()
+        self._limiter_state = 10 ** (self.config.headroom_db / 20.0)
+        self._lufs_buffer.clear()
 
     @property
     def master_gain(self) -> float:
@@ -111,13 +143,63 @@ class AudioProcessor:
 
     def set_npu_engine(self, engine: Any) -> None:
         """Connect NPU engine for AI-accelerated processing."""
+        self._npu_engine_ref = engine
         self._separator.set_npu_engine(engine)
+        self._noise_reducer.set_npu_engine(engine)
+        self._enhancer.set_npu_engine(engine)
         logger.info("NPU engine connected to audio processor")
+
+    def set_sample_rate(self, sample_rate: int) -> None:
+        """Update DSP sample rate (must match capture/output after resampling)."""
+        if sample_rate <= 0 or sample_rate == self.config.sample_rate:
+            return
+        self.config.sample_rate = sample_rate
+        self._separator = SourceSeparator(sample_rate)
+        self._noise_reducer = NPUNoiseReducer(sample_rate)
+        self._enhancer = AudioEnhancer(sample_rate)
+        self._spatial = SpatialProcessor(sample_rate)
+        self._depth = DepthProcessor(sample_rate)
+
+        # Re-apply stage enables so UI state survives sample-rate changes
+        # (new instances default on).
+        self._separator.config.enabled = self.config.enable_separation
+        self._noise_reducer.enabled = self.config.enable_noise_reduction
+        self._enhancer.enabled = self.config.enable_enhancement
+        self._spatial.enabled = self.config.enable_spatial
+        self._depth.enabled = self.config.enable_depth
+
+        if self._npu_engine_ref is not None:
+            self._separator.set_npu_engine(self._npu_engine_ref)
+            self._noise_reducer.set_npu_engine(self._npu_engine_ref)
+            self._enhancer.set_npu_engine(self._npu_engine_ref)
+        logger.info("Processor sample rate set to %d Hz", sample_rate)
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         """Process audio through the full DSP chain."""
-        if self._bypass or audio.shape[0] == 0:
+        if audio.shape[0] == 0:
             return audio
+
+        if self._bypass:
+            if self._flush_pipeline_on_next_bypass_frame:
+                self._reset_all_streaming_state()
+                self._flush_pipeline_on_next_bypass_frame = False
+                # Same full reset as DSP flush; drop pending DSP flush to avoid double
+                # reset on the next process() when leaving bypass.
+                self._flush_pipeline_on_next_dsp_frame = False
+            t_bypass = time.perf_counter()
+            dry = audio
+            if dry.ndim == 1:
+                dry = np.column_stack([dry, dry])
+            out = (dry * self._master_gain).astype(np.float32)
+            self._update_stats(out, (time.perf_counter() - t_bypass) * 1000)
+            return out
+
+        if self._flush_pipeline_on_next_dsp_frame:
+            self._reset_all_streaming_state()
+            self._flush_pipeline_on_next_dsp_frame = False
+            # If bypass was toggled on/off without a bypass audio frame, clear the
+            # stale bypass-arm flag (same reset already ran above).
+            self._flush_pipeline_on_next_bypass_frame = False
 
         t0 = time.perf_counter()
 
@@ -126,17 +208,30 @@ class AudioProcessor:
 
         audio = self._normalize_input(audio)
 
+        if self.config.enable_noise_reduction:
+            audio = self._noise_reducer.process(audio)
+        else:
+            self._noise_reducer.reset_streaming_state()
+
         if self.config.enable_separation:
             audio = self._separator.process(audio)
+        else:
+            self._separator.reset_streaming_state()
 
         if self.config.enable_enhancement:
             audio = self._enhancer.process(audio)
+        else:
+            self._enhancer.reset_streaming_state()
 
         if self.config.enable_spatial:
             audio = self._spatial.process(audio)
+        else:
+            self._spatial.reset_streaming_state()
 
         if self.config.enable_depth:
             audio = self._depth.process(audio)
+        else:
+            self._depth.reset_streaming_state()
 
         audio = audio * self._master_gain
         audio = self._limit_output(audio)
@@ -204,8 +299,12 @@ class AudioProcessor:
 
         waveform = mono[:: max(1, len(mono) // 512)]
 
+        stem_levels: dict[str, float] = {}
+        if self.config.enable_separation:
+            stem_levels = dict(self._separator.last_stem_levels)
+
         return {
             "spectrum": spectrum_db.tolist(),
             "waveform": waveform.tolist(),
-            "stem_levels": {},
+            "stem_levels": stem_levels,
         }

@@ -11,6 +11,8 @@ Creates convincing front-to-back depth and 3D soundstage through:
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from scipy import signal
 
@@ -35,8 +37,8 @@ class DepthProcessor:
         self._early_reflections = EarlyReflections(sample_rate)
         self._distance_sos: np.ndarray | None = None
         self._air_absorption_sos: np.ndarray | None = None
-        self._zi_dist: list = []
-        self._zi_air: list = []
+        self._zi_dist: list[Any] = []
+        self._zi_air: list[Any] = []
 
         # Pre-delay buffer
         self._predelay_buf_l = np.zeros(
@@ -49,9 +51,22 @@ class DepthProcessor:
 
         self._build_filters()
 
+    # Keys accepted from UI; rejects stray dicts that could clobber sample_rate etc.
+    _TUNABLE_KEYS = frozenset({
+        "depth_amount",
+        "room_size",
+        "damping",
+        "diffusion",
+        "pre_delay_ms",
+        "early_reflection_mix",
+        "late_reverb_mix",
+    })
+
     def update_parameters(self, **kwargs: float) -> None:
         changed = False
         for key, value in kwargs.items():
+            if key not in self._TUNABLE_KEYS:
+                continue
             if hasattr(self, key) and getattr(self, key) != value:
                 setattr(self, key, value)
                 changed = True
@@ -81,6 +96,14 @@ class DepthProcessor:
             ]
         else:
             self._air_absorption_sos = None
+
+    def reset_streaming_state(self) -> None:
+        """Clear delay/reverb tails and filter zi when depth stage is pipeline-bypassed."""
+        self._build_filters()
+        self._predelay_buf_l[:] = 0.0
+        self._predelay_buf_r[:] = 0.0
+        self._predelay_idx = 0
+        self._reverb.reset_streaming_state()
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         if not self.enabled or audio.shape[0] == 0:
@@ -265,6 +288,18 @@ class FDNReverb:
         )
         self._mod_depth = 3  # samples
 
+    def reset_streaming_state(self) -> None:
+        """Zero FDN delay lines and modulation (call when bypassing depth/reverb)."""
+        for buf in self._buffers:
+            buf[:] = 0.0
+        self._indices = [0] * len(self._delays)
+        self._lp_state = [0.0] * len(self._delays)
+        self._hp_state = [0.0] * len(self._delays)
+        self._mod_phase[:] = 0.0
+        for ap_buf in self._ap_buffers:
+            ap_buf[:] = 0.0
+        self._ap_indices = [0] * len(self._delays)
+
     @staticmethod
     def _hadamard(n: int) -> np.ndarray:
         h = np.array([[1.0]])
@@ -324,7 +359,7 @@ class FDNReverb:
             mixed = self._mix @ taps
 
             # Write back with allpass diffusion, feedback, and damping
-            for i, delay in enumerate(self._delays):
+            for i, _delay in enumerate(self._delays):
                 # Two-band damping (low-shelf + high-shelf)
                 lp = mixed[i] * (1.0 - damp_lo) + self._lp_state[i] * damp_lo
                 self._lp_state[i] = lp

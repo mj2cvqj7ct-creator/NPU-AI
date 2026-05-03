@@ -8,8 +8,10 @@ triple-buffering, and buffer health monitoring.
 
 from __future__ import annotations
 
+from typing import Any
+
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QPainter, QPaintEvent, QRadialGradient
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -28,7 +30,7 @@ from src.dac.xmos_controller import BitDepth, DACFilter, DACStatus, SampleRate
 class DACStatusIndicator(QWidget):
     """LED-style status indicator for DAC connection."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFixedSize(16, 16)
         self._status = DACStatus.DISCONNECTED
@@ -43,9 +45,7 @@ class DACStatusIndicator(QWidget):
         self._status = status
         self.update()
 
-    def paintEvent(self, event) -> None:
-        from PyQt6.QtGui import QPainter, QRadialGradient
-
+    def paintEvent(self, event: QPaintEvent | None) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -66,8 +66,9 @@ class DACControlPanel(QGroupBox):
 
     config_changed = pyqtSignal(dict)
     optimize_requested = pyqtSignal()
+    loopback_resync_requested = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("SABAJ A20D ES9038PRO USB DAC", parent)
 
         layout = QVBoxLayout(self)
@@ -85,6 +86,16 @@ class DACControlPanel(QGroupBox):
         status_row.addStretch()
         status_row.addWidget(self._chip_label)
         layout.addLayout(status_row)
+
+        self._pipeline_rates_label = QLabel("Pipeline: loopback — → out —")
+        self._pipeline_rates_label.setObjectName("statusLabel")
+        self._pipeline_rates_label.setWordWrap(True)
+        self._pipeline_rates_label.setToolTip(
+            "Windows default playback mix (loopback) vs DAC output sample rate. "
+            "Resample: polyphase in the processing path. "
+            "When idle, loopback rate is re-probed about every 1.5 s.",
+        )
+        layout.addWidget(self._pipeline_rates_label)
 
         # Sample rate + bit depth
         config_row = QHBoxLayout()
@@ -172,11 +183,24 @@ class DACControlPanel(QGroupBox):
             "Auto-optimize buffer and latency for NPU processing"
         )
 
+        self._resync_loopback_btn = QPushButton("Resync loopback")
+        self._resync_loopback_btn.setObjectName("secondaryButton")
+        self._resync_loopback_btn.clicked.connect(
+            self.loopback_resync_requested.emit,
+        )
+        self._resync_loopback_btn.setToolTip(
+            "Re-probe Windows default playback mix and sync timing. "
+            "While processing: restarts WASAPI loopback. "
+            "While stopped: refreshes probe for Pipeline/Rates only. "
+            "Shortcut: Ctrl+Shift+R.",
+        )
+
         self._info_label = QLabel("")
         self._info_label.setObjectName("statusLabel")
         self._info_label.setWordWrap(True)
 
         btn_row.addWidget(self._optimize_btn)
+        btn_row.addWidget(self._resync_loopback_btn)
         btn_row.addWidget(self._info_label, 1)
         layout.addLayout(btn_row)
 
@@ -193,10 +217,25 @@ class DACControlPanel(QGroupBox):
         health_row.addWidget(self._npu_time_label)
         layout.addLayout(health_row)
 
+    def update_pipeline_rates(self, info: dict[str, int | bool]) -> None:
+        """Show loopback vs output rates from AudioEnhancerApp.pipeline_rate_info()."""
+        lb = int(info["loopback_hz"])
+        out = int(info["output_hz"])
+        if info["resampling"]:
+            self._pipeline_rates_label.setText(
+                f"Pipeline: loopback {lb} Hz → out {out} Hz (resample)",
+            )
+            self._pipeline_rates_label.setStyleSheet("color: #FDCB6E;")
+        else:
+            self._pipeline_rates_label.setText(
+                f"Pipeline: loopback {lb} Hz — matched to out {out} Hz",
+            )
+            self._pipeline_rates_label.setStyleSheet("color: #55EFC4;")
+
     def _emit_config(self) -> None:
         self.config_changed.emit(self.get_config())
 
-    def get_config(self) -> dict:
+    def get_config(self) -> dict[str, Any]:
         return {
             "sample_rate": self._sample_rate.currentData(),
             "bit_depth": self._bit_depth.currentData(),
@@ -207,17 +246,39 @@ class DACControlPanel(QGroupBox):
             "dac_filter": self._dac_filter.currentData(),
         }
 
-    def update_status(self, status_info: dict) -> None:
+    def update_status(self, status_info: dict[str, Any]) -> None:
         """Update DAC status display."""
         status = DACStatus(status_info.get("status", "disconnected"))
         self._status_led.set_status(status)
         self._status_label.setText(status_info.get("device_name", "Unknown"))
 
         if "sample_rate" in status_info:
-            for i in range(self._sample_rate.count()):
-                if self._sample_rate.itemData(i) == status_info["sample_rate"]:
-                    self._sample_rate.setCurrentIndex(i)
-                    break
+            for w in (
+                self._sample_rate,
+                self._bit_depth,
+                self._dac_filter,
+                self._buffer_size,
+                self._latency,
+                self._exclusive_check,
+                self._triple_buf_check,
+            ):
+                w.blockSignals(True)
+            try:
+                for i in range(self._sample_rate.count()):
+                    if self._sample_rate.itemData(i) == status_info["sample_rate"]:
+                        self._sample_rate.setCurrentIndex(i)
+                        break
+            finally:
+                for w in (
+                    self._sample_rate,
+                    self._bit_depth,
+                    self._dac_filter,
+                    self._buffer_size,
+                    self._latency,
+                    self._exclusive_check,
+                    self._triple_buf_check,
+                ):
+                    w.blockSignals(False)
 
         # Health monitoring
         health = status_info.get("buffer_health", 1.0)
@@ -238,10 +299,16 @@ class DACControlPanel(QGroupBox):
             f"NPU: {npu_ms:.1f}ms (peak: {npu_peak:.1f}ms)"
         )
 
-    def show_optimization_result(self, settings: dict) -> None:
+    def show_optimization_result(self, settings: dict[str, Any]) -> None:
         """Display NPU optimization results."""
-        self._buffer_size.setValue(settings.get("buffer_size_ms", 10))
-        self._latency.setValue(settings.get("latency_ms", 5))
+        for w in (self._buffer_size, self._latency):
+            w.blockSignals(True)
+        try:
+            self._buffer_size.setValue(settings.get("buffer_size_ms", 10))
+            self._latency.setValue(settings.get("latency_ms", 5))
+        finally:
+            for w in (self._buffer_size, self._latency):
+                w.blockSignals(False)
         self._info_label.setText(
             f"Optimized: buffer={settings.get('buffer_size_ms')}ms, "
             f"latency={settings.get('latency_ms')}ms, "

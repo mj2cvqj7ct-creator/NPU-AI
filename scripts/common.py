@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+from typing import NoReturn
 
 APP_NAME = "NPU Audio Enhancer"
 APP_VERSION = "1.0.0"
@@ -18,20 +19,10 @@ _PROJECT_SENTINELS = ("requirements.txt", "build.spec", "pyproject.toml")
 
 
 def get_desktop_path() -> str:
-    """Get the user's Desktop path, using Windows shell API if available."""
-    if sys.platform == "win32":
-        try:
-            import ctypes.wintypes
+    """User Desktop folder: join(expanduser('home'), 'Desktop').
 
-            CSIDL_DESKTOPDIRECTORY = 0x0010
-            buf = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
-            ctypes.windll.shell32.SHGetFolderPathW(  # type: ignore[union-attr]
-                None, CSIDL_DESKTOPDIRECTORY, None, 0, buf,
-            )
-            if buf.value:
-                return buf.value
-        except Exception:
-            pass
+    Portable (Windows/macOS/Linux). No ctypes / shell32 (avoids analyzer noise).
+    """
     return os.path.join(os.path.expanduser("~"), "Desktop")
 
 
@@ -100,7 +91,7 @@ def run_cmd(
     """Run a command and stream output."""
     cmd_list = cmd.split() if isinstance(cmd, str) else cmd
     try:
-        result = subprocess.run(cmd_list, cwd=cwd, timeout=600)
+        result = subprocess.run(cmd_list, cwd=cwd, timeout=600, check=False)
         if check and result.returncode != 0:
             print(f"[ERROR] Command failed with exit code {result.returncode}")
             return result.returncode
@@ -137,13 +128,14 @@ def get_project_dir() -> str:
     if is_project_root(cwd):
         return cwd
 
-    for i, arg in enumerate(sys.argv[1:], 1):
+    argv = sys.argv[1:]
+    for i, arg in enumerate(argv):
         if arg.startswith("--project-dir="):
             candidate = arg.split("=", 1)[1]
             if is_project_root(candidate):
                 return candidate
-        elif arg == "--project-dir" and i < len(sys.argv) - 1:
-            candidate = sys.argv[i + 1]
+        elif arg == "--project-dir" and i + 1 < len(argv):
+            candidate = argv[i + 1]
             if is_project_root(candidate):
                 return candidate
 
@@ -182,7 +174,7 @@ def ensure_venv(project_dir: str) -> tuple[str, str, str]:
             print(f"[INFO] Using system Python: {python_cmd}")
         else:
             python_cmd = sys.executable
-        rc = run_cmd([python_cmd, "-m", "venv", "venv"])
+        rc = run_cmd([python_cmd, "-m", "venv", "venv"], cwd=project_dir)
         if rc != 0:
             print("[ERROR] Failed to create virtual environment")
             input("Press Enter to exit...")
@@ -190,7 +182,7 @@ def ensure_venv(project_dir: str) -> tuple[str, str, str]:
     return venv_dir, pip_exe, python_exe
 
 
-def pause_exit(code: int = 0) -> None:
+def pause_exit(code: int = 0) -> NoReturn:
     """Pause for user input then exit."""
     input("Press Enter to exit...")
-    sys.exit(code)
+    raise SystemExit(code)

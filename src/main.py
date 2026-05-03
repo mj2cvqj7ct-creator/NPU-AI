@@ -7,6 +7,7 @@ for Spotify, Apple Music, and YouTube Music on ARM64 Snapdragon X.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sys
 
@@ -31,6 +32,7 @@ def main() -> int:
     logger.info("Starting NPU Audio Enhancer v1.0")
 
     try:
+        from PyQt6.QtCore import Qt
         from PyQt6.QtGui import QFont
         from PyQt6.QtWidgets import QApplication
     except ImportError:
@@ -38,6 +40,11 @@ def main() -> int:
             "PyQt6 is required. Install with: pip install PyQt6>=6.6.0"
         )
         return 1
+
+    with contextlib.suppress(Exception):
+        QApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough,
+        )
 
     app = QApplication(sys.argv)
     app.setApplicationName("NPU Audio Enhancer")
@@ -73,7 +80,7 @@ def main() -> int:
         window.show()
     logger.info("Application window ready")
 
-    return app.exec()
+    return int(app.exec())
 
 
 if __name__ == "__main__":

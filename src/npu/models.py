@@ -9,12 +9,29 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
+from pathlib import Path
+from typing import TypedDict
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
-MODEL_REGISTRY = {
+
+def default_model_dir() -> str:
+    """Directory for ONNX weights: beside the frozen EXE, else repo ./models."""
+    if getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(sys.executable), "models")
+    return str(Path(__file__).resolve().parents[2] / "models")
+
+
+class _ModelRegistryEntry(TypedDict):
+    description: str
+    input_shape: list[int]
+    output_shape: list[int]
+
+
+MODEL_REGISTRY: dict[str, _ModelRegistryEntry] = {
     "source_separation": {
         "description": "Vocal/instrument source separation",
         "input_shape": [1, 1, 2049],
@@ -65,7 +82,10 @@ def create_dummy_onnx_model(
         for d in output_shape:
             output_size *= d
 
-        weights = np.random.randn(input_size, output_size).astype(np.float32) * 0.01
+        # Zero weights → matmul is zero → sigmoid(0)=0.5: neutral spectral masks /
+        # curves until replaced with trained checkpoints (avoids random junk when
+        # exercising NPU/DirectML on placeholder graphs).
+        weights = np.zeros((input_size, output_size), dtype=np.float32)
         weight_init = helper.make_tensor(
             "weights", TensorProto.FLOAT, [input_size, output_size], weights.flatten()
         )

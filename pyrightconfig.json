@@ -1,0 +1,7 @@
+{
+  "include": ["src", "scripts", "tests"],
+  "exclude": ["**/venv", "**/.venv", "**/dist", "**/build"],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic",
+  "executionEnvironments": [{ "root": "." }]
+}

@@ -26,18 +26,7 @@ INSTALLER_FILENAME = f"NPU_Audio_Enhancer_Setup_{APP_VERSION}.exe"
 
 
 def _get_desktop_path() -> str:
-    """Get the user's Desktop path, using Windows shell API if available."""
-    if sys.platform == "win32":
-        try:
-            import ctypes.wintypes
-
-            CSIDL_DESKTOPDIRECTORY = 0x0010
-            buf = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
-            ctypes.windll.shell32.SHGetFolderPathW(None, CSIDL_DESKTOPDIRECTORY, None, 0, buf)  # type: ignore[union-attr]
-            if buf.value:
-                return buf.value
-        except Exception:
-            pass
+    """User Desktop: ~/Desktop (same as scripts.common.get_desktop_path)."""
     return os.path.join(os.path.expanduser("~"), "Desktop")
 
 

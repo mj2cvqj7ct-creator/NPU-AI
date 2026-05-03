@@ -10,13 +10,97 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable
+from typing import Any
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+_ENDPOINT_CACHE_TTL_S = 1.5
+_endpoint_state_cache: tuple[str, int, int, int] | None = None
+_endpoint_state_cache_ts: float = 0.0
+
+
+def invalidate_default_render_endpoint_cache() -> None:
+    """Clear cached default render endpoint (call after routing or mix likely changed)."""
+    global _endpoint_state_cache, _endpoint_state_cache_ts
+    _endpoint_state_cache = None
+    _endpoint_state_cache_ts = 0.0
+
+
+def cached_default_render_endpoint_state(
+    ttl_s: float = _ENDPOINT_CACHE_TTL_S,
+) -> tuple[str, int, int, int] | None:
+    """Probe default render endpoint with short TTL to spare COM from UI timers."""
+    global _endpoint_state_cache, _endpoint_state_cache_ts
+    now = time.monotonic()
+    if (
+        _endpoint_state_cache is not None
+        and (now - _endpoint_state_cache_ts) < ttl_s
+    ):
+        return _endpoint_state_cache
+    st = probe_default_render_endpoint_state()
+    if st is not None:
+        _endpoint_state_cache = st
+        _endpoint_state_cache_ts = now
+    return st
+
+
+def peek_default_render_mix_hz() -> int | None:
+    """Mix rate without INFO log; uses short cache (safe for UI timers)."""
+    st = cached_default_render_endpoint_state()
+    return st[1] if st else None
+
+
+def probe_default_render_endpoint_state() -> tuple[str, int, int, int] | None:
+    """Default playback device id + mix format (Windows). Returns None if unavailable.
+
+    Tuple: (device_id, sample_rate_hz, channels, bits_per_sample)
+    """
+    try:
+        import comtypes
+        from pycaw.pycaw import IAudioClient, IMMDeviceEnumerator
+
+        comtypes.CoInitialize()
+        enumerator = comtypes.CoCreateInstance(
+            comtypes.GUID("{BCDE0395-E52F-467C-8E3D-C4579291692E}"),
+            IMMDeviceEnumerator,
+            comtypes.CLSCTX_ALL,
+        )
+        device = enumerator.GetDefaultAudioEndpoint(0, 1)
+        try:
+            raw_id = device.GetId()
+            dev_id = str(raw_id) if raw_id is not None else ""
+        except Exception:
+            dev_id = ""
+        client = device.Activate(IAudioClient._iid_, comtypes.CLSCTX_ALL, None)
+        mix = client.GetMixFormat()
+        rate = int(mix.contents.nSamplesPerSec)
+        ch = int(mix.contents.nChannels)
+        bits = int(getattr(mix.contents, "wBitsPerSample", 32))
+        logger.debug(
+            "Default render endpoint: id=%s, mix=%d Hz, %d ch, %d-bit",
+            dev_id[:48] if dev_id else "(none)",
+            rate,
+            ch,
+            bits,
+        )
+        return (dev_id, rate, ch, bits)
+    except Exception as e:
+        logger.debug("Could not probe default render endpoint: %s", e)
+        return None
+
+
+def probe_default_render_mix_sample_rate() -> int | None:
+    """Read the mix-format sample rate of the default playback device (Windows)."""
+    st = probe_default_render_endpoint_state()
+    if st:
+        logger.info("Default render mix sample rate: %d Hz", st[1])
+    return st[1] if st else None
 
 
 class CaptureMode(Enum):
@@ -32,9 +116,9 @@ class AudioFormat:
     is_float: bool = True
 
     @property
-    def dtype(self) -> np.dtype:
+    def dtype(self) -> np.dtype[Any]:
         if self.is_float:
-            return np.float32 if self.bit_depth == 32 else np.float64
+            return np.dtype(np.float32 if self.bit_depth == 32 else np.float64)
         return np.dtype(f"int{self.bit_depth}")
 
     @property
@@ -68,8 +152,10 @@ class WASAPICapture:
         self._capture_thread: threading.Thread | None = None
         self._callbacks: list[Callable[[np.ndarray], None]] = []
         self._lock = threading.Lock()
-        self._stream = None
-        self._wasapi_client = None
+        self._stream: Any = None
+        self._wasapi_client: Any = None
+        # Set by WASAPI thread from IAudioClient.GetMixFormat (authoritative)
+        self._actual_sample_rate: int | None = None
 
     def add_callback(self, callback: Callable[[np.ndarray], None]) -> None:
         with self._lock:
@@ -153,6 +239,22 @@ class WASAPICapture:
             self.config.buffer_size_ms,
         )
 
+    @property
+    def effective_sample_rate(self) -> int:
+        """Sample rate of captured PCM (WASAPI mix rate or config)."""
+        if self._actual_sample_rate is not None:
+            return self._actual_sample_rate
+        return self.config.format.sample_rate
+
+    def loopback_rate_for_display(self) -> int:
+        """Loopback / Windows mix rate for UI (probed when capture not running)."""
+        if self._is_capturing:
+            return self.effective_sample_rate
+        p = peek_default_render_mix_hz()
+        if p is not None:
+            return p
+        return int(self.config.format.sample_rate)
+
     def stop(self) -> None:
         self._is_capturing = False
         if self._capture_thread:
@@ -165,6 +267,7 @@ class WASAPICapture:
             except Exception:
                 pass
             self._stream = None
+        self._actual_sample_rate = None
         logger.info("Audio capture stopped")
 
     def _capture_loop_wasapi(self) -> None:
@@ -181,6 +284,12 @@ class WASAPICapture:
 
             client = self._wasapi_client
             mix_format = client.GetMixFormat()
+            mix_rate = int(mix_format.contents.nSamplesPerSec)
+            mix_ch = int(mix_format.contents.nChannels)
+            with self._lock:
+                self._actual_sample_rate = mix_rate
+            self.config.format.sample_rate = mix_rate
+            logger.info("WASAPI mix format: %d Hz, %d ch", mix_rate, mix_ch)
             buffer_duration_hns = int(
                 REFTIMES_PER_SEC * self.config.buffer_size_ms / 1000
             )
@@ -200,7 +309,7 @@ class WASAPICapture:
             client.Start()
             logger.info("WASAPI loopback capture started via COM")
 
-            channels = mix_format.contents.nChannels
+            channels = int(mix_format.contents.nChannels)
 
             while self._is_capturing:
                 try:
@@ -214,6 +323,11 @@ class WASAPICapture:
                             audio_data = np.frombuffer(raw, dtype=np.float32).reshape(
                                 num_frames, channels
                             ).copy()
+                            if channels > 2:
+                                audio_data = audio_data[:, :2]
+                            elif channels == 1:
+                                c0 = audio_data[:, 0]
+                                audio_data = np.column_stack([c0, c0])
                             self._dispatch_audio(audio_data)
 
                         capture_client.ReleaseBuffer(num_frames)
@@ -235,7 +349,12 @@ class WASAPICapture:
         """Sounddevice fallback capture loop."""
         import sounddevice as sd
 
-        def audio_callback(indata: np.ndarray, frames: int, time_info, status) -> None:
+        def audio_callback(
+            indata: np.ndarray,
+            frames: int,
+            time_info: Any,
+            status: Any,
+        ) -> None:
             if status:
                 logger.debug("Sounddevice status: %s", status)
             audio_copy = indata.copy()
@@ -250,6 +369,8 @@ class WASAPICapture:
                 callback=audio_callback,
             )
             self._stream.start()
+            with self._lock:
+                self._actual_sample_rate = int(self.config.format.sample_rate)
 
             while self._is_capturing:
                 import time
@@ -289,7 +410,7 @@ class WASAPICapture:
         return self._is_capturing
 
     @staticmethod
-    def list_devices() -> list[dict]:
+    def list_devices() -> list[dict[str, Any]]:
         """List available audio capture devices."""
         try:
             import sounddevice as sd

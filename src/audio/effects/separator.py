@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from scipy import signal
@@ -57,7 +58,7 @@ class SourceSeparator:
     ):
         self.sample_rate = sample_rate
         self.config = config or SeparationConfig()
-        self._npu_engine = None
+        self._npu_engine: Any = None
 
         self._window = signal.windows.hann(
             self.config.fft_size, sym=False,
@@ -89,6 +90,9 @@ class SourceSeparator:
             self.config.hpss_kernel_harmonic,
             self.config.hpss_kernel_percussive,
         )
+        self._last_stem_levels: dict[str, float] = {
+            n: 0.0 for n in STEM_NAMES
+        }
 
     def set_npu_engine(self, engine: object) -> None:
         self._npu_engine = engine
@@ -104,7 +108,7 @@ class SourceSeparator:
             end = min(i + fft_size, fft_size)
             denom[i:end] += w[:end - i] ** 2
         denom = np.maximum(denom, 1e-8)
-        return w / denom[:fft_size]
+        return np.asarray(w / denom[:fft_size], dtype=np.float32)
 
     # ------------------------------------------------------------------
     # Filter creation
@@ -203,7 +207,7 @@ class SourceSeparator:
             estimate = target_mag * mask
             denom = estimate ** 2 + (mixture_mag - estimate) ** 2 + 1e-10
             mask = estimate ** 2 / denom
-        return np.clip(mask, 0.0, 1.0)
+        return np.asarray(mask, dtype=np.float64)
 
     # ------------------------------------------------------------------
     # Processing
@@ -211,6 +215,7 @@ class SourceSeparator:
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         if not self.config.enabled or audio.shape[0] == 0:
+            self._last_stem_levels = {n: 0.0 for n in STEM_NAMES}
             return audio
 
         if audio.ndim == 1:
@@ -222,6 +227,27 @@ class SourceSeparator:
             stems = self._spectral_separate(audio)
 
         return self._remix_stems(stems, audio)
+
+    @property
+    def last_stem_levels(self) -> dict[str, float]:
+        """Per-stem RMS levels (0..1) for UI meters, updated each process() call."""
+        return dict(self._last_stem_levels)
+
+    def clear_stem_levels(self) -> None:
+        self._last_stem_levels = {n: 0.0 for n in STEM_NAMES}
+
+    def reset_streaming_state(self) -> None:
+        """Clear HPSS history, Wiener accumulators, and STFT carry when pipeline-bypassed."""
+        self.clear_stem_levels()
+        fft = self.config.fft_size
+        nfreq = fft // 2 + 1
+        self._input_buffer = np.zeros((fft, 2), dtype=np.float32)
+        self._prev_phase = np.zeros((nfreq, 2), dtype=np.float64)
+        self._prev_magnitude = np.zeros((nfreq, 2), dtype=np.float64)
+        self._prev_energy = 0.0
+        self._prev_band_energy = np.zeros(4, dtype=np.float64)
+        self._wiener_accum = {name: None for name in STEM_NAMES}
+        self._spec_history = []
 
     def _npu_separate(self, audio: np.ndarray) -> dict[str, np.ndarray]:
         try:
@@ -392,6 +418,26 @@ class SourceSeparator:
             "bass": 1.0 + self.config.bass_enhance,
             "other": 1.0 + self.config.instrument_clarity * 0.5,
         }
+
+        stem_rms: dict[str, float] = {}
+        peak_rms = 1e-10
+        for name in STEM_NAMES:
+            stem = stems.get(name)
+            valid_shape = (
+                stem is not None and stem.shape == original.shape
+            )
+            gain = gain_map.get(name, 1.0)
+            if valid_shape and stem is not None:
+                weighted = stem.astype(np.float64) * gain
+                rms = float(np.sqrt(np.mean(weighted**2)))
+                stem_rms[name] = rms
+                peak_rms = max(peak_rms, rms)
+            else:
+                stem_rms[name] = 0.0
+        for name in STEM_NAMES:
+            self._last_stem_levels[name] = float(
+                min(1.0, stem_rms.get(name, 0.0) / peak_rms),
+            )
 
         for name, stem in stems.items():
             if stem.shape != original.shape:

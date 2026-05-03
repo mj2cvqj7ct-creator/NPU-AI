@@ -125,6 +125,9 @@ class NPUEngine:
     def is_npu_active(self) -> bool:
         return self._active_provider == ExecutionProvider.NPU_DIRECTML
 
+    def is_model_loaded(self, name: str) -> bool:
+        return name in self._sessions
+
     def load_model(self, name: str, model_path: str) -> bool:
         """Load an ONNX model for inference."""
         if not self.is_available:
@@ -150,12 +153,14 @@ class NPUEngine:
             if self.config.enable_profiling:
                 sess_options.enable_profiling = True
 
-            providers = [self._active_provider.value]
-            if self._active_provider != ExecutionProvider.CPU:
+            active = self._active_provider
+            assert active is not None  # guarded by is_available
+            providers = [active.value]
+            if active != ExecutionProvider.CPU:
                 providers.append(ExecutionProvider.CPU.value)
 
             provider_options: list[dict[str, Any]] = []
-            if self._active_provider == ExecutionProvider.NPU_DIRECTML:
+            if active == ExecutionProvider.NPU_DIRECTML:
                 provider_options.append({"device_id": self.config.device_id})
                 if ExecutionProvider.CPU.value in providers:
                     provider_options.append({})
@@ -231,12 +236,22 @@ class NPUEngine:
             info["available_providers"] = self._ort.get_available_providers()
 
         model_stats = {}
+        total_infer_ms = 0.0
+        total_infer_count = 0
         for name, mi in self._models.items():
             model_stats[name] = {
                 "infer_count": mi.infer_count,
                 "avg_ms": round(mi.avg_infer_ms, 2),
             }
+            total_infer_ms += mi.total_infer_ms
+            total_infer_count += mi.infer_count
         info["model_stats"] = model_stats
+        if total_infer_count > 0:
+            info["avg_inference_ms"] = round(
+                total_infer_ms / total_infer_count, 3,
+            )
+        else:
+            info["avg_inference_ms"] = 0.0
 
         return info
 
@@ -254,3 +269,11 @@ class NPUEngine:
         for name in list(self._sessions.keys()):
             self.unload_model(name)
         logger.info("NPU engine shut down")
+
+    def load_default_models(self) -> None:
+        """Ensure placeholder ONNX files exist and load all registry models."""
+        from src.npu.models import MODEL_REGISTRY, ensure_models_exist
+
+        ensure_models_exist(self.config.model_dir)
+        for name in MODEL_REGISTRY:
+            self.load_model(name, f"{name}.onnx")

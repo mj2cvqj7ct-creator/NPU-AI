@@ -12,8 +12,8 @@ from collections import deque
 
 import numpy as np
 from PyQt6.QtCore import QRectF, Qt, QTimer
-from PyQt6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPaintEvent, QPen
+from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 
 class SpectrumVisualizer(QWidget):
@@ -22,7 +22,7 @@ class SpectrumVisualizer(QWidget):
     BAR_COUNT = 80
     SMOOTHING = 0.25
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setMinimumHeight(180)
         self._spectrum = np.zeros(self.BAR_COUNT, dtype=np.float32)
@@ -52,7 +52,7 @@ class SpectrumVisualizer(QWidget):
         self._spectrum *= 0.97
         self.update()
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent | None) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -103,7 +103,7 @@ class SpectrumVisualizer(QWidget):
 class WaveformVisualizer(QWidget):
     """Real-time waveform display with dual gradient fill and glow."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setMinimumHeight(100)
         self._waveform: deque[float] = deque(maxlen=512)
@@ -113,7 +113,7 @@ class WaveformVisualizer(QWidget):
         self._waveform.extend(waveform_data)
         self.update()
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent | None) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -178,7 +178,7 @@ class WaveformVisualizer(QWidget):
 class StemMeter(QWidget):
     """Individual stem level meter with glow effect."""
 
-    def __init__(self, name: str, color: QColor, parent=None):
+    def __init__(self, name: str, color: QColor, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.name = name
         self.color = color
@@ -192,7 +192,7 @@ class StemMeter(QWidget):
         self.peak = max(self.peak * 0.99, self.level)
         self.update()
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent | None) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -259,9 +259,8 @@ class StemMeter(QWidget):
 class StemLevelMeters(QWidget):
     """Collection of stem level meters for source separation visualization."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        from PyQt6.QtWidgets import QVBoxLayout
 
         layout = QVBoxLayout(self)
         layout.setSpacing(3)

@@ -6,6 +6,13 @@ import os
 import shutil
 import sys
 
+# `python scripts/...py` puts `scripts/` first on sys.path; repo root must precede it.
+if not getattr(sys, "frozen", False):
+    _scripts_dir = os.path.dirname(os.path.abspath(__file__))
+    _repo_root = os.path.dirname(_scripts_dir)
+    if _repo_root not in sys.path:
+        sys.path.insert(0, _repo_root)
+
 from scripts.common import (
     APP_NAME,
     INSTALLER_FILENAME,
