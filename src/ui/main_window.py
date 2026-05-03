@@ -77,6 +77,7 @@ class MainWindow(QMainWindow):
         self._rate_defer_timer.setSingleShot(True)
         self._rate_defer_timer.setInterval(150)
         self._rate_defer_timer.timeout.connect(self._update_pipeline_rate_labels)
+        self._stats_ticks = 0
         self._start_mm_notification()
         QTimer.singleShot(0, self._on_startup_idle_probe)
 
@@ -112,6 +113,8 @@ class MainWindow(QMainWindow):
         reasons = self._mm_pending_reasons.copy()
         self._mm_pending_reasons.clear()
         invalidate_default_render_endpoint_cache()
+        if self._app:
+            self._app.dac_controller.refresh_detection()
         if not self._app:
             return
         changed = False
@@ -197,11 +200,11 @@ class MainWindow(QMainWindow):
         )
         subtitle.setObjectName("statusLabel")
 
-        npu_status = QLabel("NPU: 初期化中…")
+        npu_status = QLabel("NPU: …")
         npu_status.setObjectName("npuBadge")
         self._npu_status_label = npu_status
 
-        dac_badge = QLabel("DAC: 検出中…")
+        dac_badge = QLabel("出力: …")
         dac_badge.setObjectName("statusLabel")
         self._dac_badge = dac_badge
 
@@ -602,92 +605,108 @@ class MainWindow(QMainWindow):
 
     def _update_stats(self) -> None:
         """Update processing statistics display."""
+        self._stats_ticks += 1
         if not self._app:
+            self._npu_status_label.setText("NPU: エンジン未初期化")
+            self._npu_status_label.setStyleSheet(
+                "color: #E17055; border-color: #E17055;",
+            )
+            self._dac_badge.setText("DAC: —")
+            self._dac_badge.setStyleSheet("color: #8B949E;")
             return
 
-        stats = self._app.processor.stats
-        self._latency_label.setText(f"遅延: {stats.processing_time_ms:.1f} ms")
+        if self._stats_ticks % 10 == 0:
+            self._app.dac_controller.refresh_detection()
 
         try:
-            import psutil
+            stats = self._app.processor.stats
+            self._latency_label.setText(f"遅延: {stats.processing_time_ms:.1f} ms")
 
-            cpu = psutil.cpu_percent(interval=None)
-            self._cpu_label.setText(f"CPU: {cpu:.0f}%")
-        except ImportError:
-            pass
+            try:
+                import psutil
 
-        npu_info = self._app.npu_engine.get_device_info()
-        provider = npu_info.get("provider", "N/A")
-        if npu_info.get("is_npu"):
-            self._npu_status_label.setText(f"NPU: 有効（{provider}）")
-            self._npu_status_label.setStyleSheet(
-                "color: #00B894; border-color: #00B894;"
-            )
-        elif provider != "None":
-            self._npu_status_label.setText(f"NPU: {provider}")
-            self._npu_status_label.setStyleSheet(
-                "color: #FDCB6E; border-color: #FDCB6E;"
-            )
-        else:
-            self._npu_status_label.setText("NPU: DSP モード")
-            self._npu_status_label.setStyleSheet(
-                "color: #8B949E; border-color: #8B949E;"
-            )
+                cpu = psutil.cpu_percent(interval=None)
+                self._cpu_label.setText(f"CPU: {cpu:.0f}%")
+            except ImportError:
+                pass
 
-        npu_infer_ms = float(npu_info.get("avg_inference_ms", 0.0))
-        if npu_infer_ms > 0:
-            self._npu_load_label.setText(f"推論: 平均 {npu_infer_ms:.2f} ms")
-        else:
-            self._npu_load_label.setText("推論: —")
-
-        lines = [
-            f"プロバイダ: {provider}",
-            f"読み込んだモデル数: {npu_info.get('models_loaded', 0)}",
-        ]
-        mstats = npu_info.get("model_stats") or {}
-        for name in sorted(mstats.keys()):
-            row = mstats[name]
-            cnt = int(row.get("infer_count", 0))
-            avg = float(row.get("avg_ms", 0.0))
-            if cnt > 0:
-                lines.append(f"{name}: {cnt} 回、平均 {avg:.2f} ms")
+            npu_info = self._app.npu_engine.get_device_info()
+            provider = npu_info.get("provider", "N/A")
+            if npu_info.get("is_npu"):
+                self._npu_status_label.setText(f"NPU: 有効（{provider}）")
+                self._npu_status_label.setStyleSheet(
+                    "color: #00B894; border-color: #00B894;",
+                )
+            elif provider != "None":
+                self._npu_status_label.setText(f"NPU: {provider}")
+                self._npu_status_label.setStyleSheet(
+                    "color: #FDCB6E; border-color: #FDCB6E;",
+                )
             else:
-                lines.append(f"{name}: —")
-        self._npu_load_label.setToolTip("\n".join(lines))
-        self._npu_status_label.setToolTip(
-            "AI エフェクト用の ONNX Runtime 実行プロバイダです。"
-            "「推論」にマウスを載せるとモデル別の統計が表示されます。",
-        )
+                self._npu_status_label.setText("NPU: DSP モード（ONNX なし）")
+                self._npu_status_label.setStyleSheet(
+                    "color: #8B949E; border-color: #8B949E;",
+                )
 
-        dac_status = self._app.dac_controller.get_status_info()
-        self._dac_panel.update_status(dac_status)
+            npu_infer_ms = float(npu_info.get("avg_inference_ms", 0.0))
+            if npu_infer_ms > 0:
+                self._npu_load_label.setText(f"推論: 平均 {npu_infer_ms:.2f} ms")
+            else:
+                self._npu_load_label.setText("推論: —")
 
-        out_stats = self._app.output_stats
-        out_u = int(out_stats.get("underrun_count", 0))
-        qsz = int(out_stats.get("queue_size", 0))
-        buf_warn = out_u > 0 or qsz > 48
-        self._buffer_label.setText(
-            f"バッファ: {'注意' if buf_warn else 'OK'}（q={qsz}）",
-        )
-        if buf_warn:
-            self._buffer_label.setStyleSheet("color: #FDCB6E;")
-        else:
-            self._buffer_label.setStyleSheet("color: #8B949E;")
+            lines = [
+                f"プロバイダ: {provider}",
+                f"読み込んだモデル数: {npu_info.get('models_loaded', 0)}",
+            ]
+            mstats = npu_info.get("model_stats") or {}
+            for name in sorted(mstats.keys()):
+                row = mstats[name]
+                cnt = int(row.get("infer_count", 0))
+                avg = float(row.get("avg_ms", 0.0))
+                if cnt > 0:
+                    lines.append(f"{name}: {cnt} 回、平均 {avg:.2f} ms")
+                else:
+                    lines.append(f"{name}: —")
+            self._npu_load_label.setToolTip("\n".join(lines))
+            self._npu_status_label.setToolTip(
+                "AI エフェクト用の ONNX Runtime 実行プロバイダです。"
+                "「推論」にマウスを載せるとモデル別の統計が表示されます。",
+            )
 
-        self._update_pipeline_rate_labels()
+            dac_status = self._app.dac_controller.get_status_info()
+            self._dac_panel.update_status(dac_status)
 
-        # DAC badge
-        dac_name = dac_status.get("device_name", "N/A")
-        dac_st = dac_status.get("status", "disconnected")
-        if dac_st in ("connected", "streaming"):
-            self._dac_badge.setText(f"DAC: {dac_name}")
-            self._dac_badge.setStyleSheet("color: #00B894;")
-        else:
-            self._dac_badge.setText("DAC: 未接続")
-            self._dac_badge.setStyleSheet("color: #8B949E;")
+            out_stats = self._app.output_stats
+            out_u = int(out_stats.get("underrun_count", 0))
+            qsz = int(out_stats.get("queue_size", 0))
+            buf_warn = out_u > 0 or qsz > 48
+            self._buffer_label.setText(
+                f"バッファ: {'注意' if buf_warn else 'OK'}（q={qsz}）",
+            )
+            if buf_warn:
+                self._buffer_label.setStyleSheet("color: #FDCB6E;")
+            else:
+                self._buffer_label.setStyleSheet("color: #8B949E;")
 
-        profile = self._app.recommender.preference_profile
-        self._recommender_panel.update_preferences(profile)
+            self._update_pipeline_rate_labels()
+
+            dac_name = dac_status.get("device_name", "N/A")
+            dac_st = dac_status.get("status", "disconnected")
+            if dac_st in ("connected", "streaming"):
+                self._dac_badge.setText(f"出力: {dac_name}")
+                self._dac_badge.setStyleSheet("color: #00B894;")
+            else:
+                self._dac_badge.setText("出力: 未検出")
+                self._dac_badge.setStyleSheet("color: #8B949E;")
+
+            profile = self._app.recommender.preference_profile
+            self._recommender_panel.update_preferences(profile)
+        except Exception:
+            logger.exception("Stats UI update failed; partial refresh next tick")
+            self._npu_status_label.setText("NPU: 表示エラー（ログ参照）")
+            self._npu_status_label.setStyleSheet(
+                "color: #E17055; border-color: #E17055;",
+            )
 
     def _toggle_always_on_top(self, checked: bool) -> None:
         flags = self.windowFlags()
@@ -721,14 +740,21 @@ class MainWindow(QMainWindow):
 
     def update_npu_status(self, info: dict[str, Any]) -> None:
         """Update NPU status display from app controller."""
+        prov = info.get("provider", "N/A")
         if info.get("is_npu"):
-            self._npu_status_label.setText("NPU: 有効")
+            self._npu_status_label.setText(f"NPU: 有効（{prov}）")
             self._npu_status_label.setStyleSheet(
-                "color: #00B894; border-color: #00B894;"
+                "color: #00B894; border-color: #00B894;",
+            )
+        elif prov != "None":
+            self._npu_status_label.setText(f"NPU: {prov}")
+            self._npu_status_label.setStyleSheet(
+                "color: #FDCB6E; border-color: #FDCB6E;",
             )
         else:
-            self._npu_status_label.setText(
-                f"NPU: {info.get('provider', 'N/A')}"
+            self._npu_status_label.setText("NPU: DSP モード（ONNX なし）")
+            self._npu_status_label.setStyleSheet(
+                "color: #8B949E; border-color: #8B949E;",
             )
 
     def closeEvent(self, event: QCloseEvent | None) -> None:

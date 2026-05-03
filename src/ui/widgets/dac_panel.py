@@ -250,7 +250,13 @@ class DACControlPanel(QGroupBox):
         """Update DAC status display."""
         status = DACStatus(status_info.get("status", "disconnected"))
         self._status_led.set_status(status)
-        self._status_label.setText(status_info.get("device_name", "Unknown"))
+        name = str(status_info.get("device_name", "Unknown"))
+        if status in (DACStatus.CONNECTED, DACStatus.STREAMING):
+            self._status_label.setText(name)
+        elif name and name not in ("再生デバイス未検出",):
+            self._status_label.setText(f"未接続 — {name}")
+        else:
+            self._status_label.setText("未接続（既定の出力を確認してください）")
 
         if "sample_rate" in status_info:
             for w in (

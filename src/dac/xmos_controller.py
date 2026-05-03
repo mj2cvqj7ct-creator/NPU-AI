@@ -122,6 +122,10 @@ class XMOSController:
 
         self._detect_device()
 
+    def refresh_detection(self) -> None:
+        """Re-run USB DAC / default output detection (e.g. after hot-plug)."""
+        self._detect_device()
+
     def _detect_device(self) -> None:
         try:
             self._detect_via_sounddevice()
@@ -134,20 +138,46 @@ class XMOSController:
             import sounddevice as sd
 
             devices = sd.query_devices()
+            dac_keywords = (
+                "sabaj",
+                "xmos",
+                "a20d",
+                "usb audio",
+                "es9038",
+                "thesycon",
+                "usb dac",
+                "usb2 audio",
+            )
             for i, dev in enumerate(devices):
-                name = dev["name"].lower()
-                if any(
-                    keyword in name
-                    for keyword in ["sabaj", "xmos", "a20d", "usb audio", "es9038"]
-                ):
+                name = str(dev["name"]).lower()
+                if any(k in name for k in dac_keywords):
                     self._status = DACStatus.CONNECTED
-                    self._info.name = dev["name"]
+                    self._info.name = str(dev["name"])
                     self._current_sample_rate = int(dev["default_samplerate"])
-                    logger.info("SABAJ A20D detected: %s (device %d)", dev["name"], i)
+                    logger.info("USB DAC / XMOS candidate: %s (device %d)", dev["name"], i)
                     return
 
-            logger.info("SABAJ A20D not detected; using default audio output")
+            # Fallback: treat Windows default output as the active playback device so
+            # the UI shows a real endpoint name when the DAC string does not match.
+            try:
+                default_idx = sd.default.device["output"]
+                if default_idx is not None and int(default_idx) >= 0:
+                    dev = devices[int(default_idx)]
+                    self._status = DACStatus.CONNECTED
+                    self._info.name = str(dev["name"])
+                    self._current_sample_rate = int(dev["default_samplerate"])
+                    logger.info(
+                        "DAC keyword match miss; using default output: %s (device %s)",
+                        dev["name"],
+                        default_idx,
+                    )
+                    return
+            except (TypeError, ValueError, IndexError, KeyError) as e:
+                logger.debug("Default output device lookup failed: %s", e)
+
+            logger.info("No playback device resolved for DAC status")
             self._status = DACStatus.DISCONNECTED
+            self._info.name = "再生デバイス未検出"
 
         except ImportError:
             logger.info("sounddevice not available for device detection")
