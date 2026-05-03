@@ -27,3 +27,6 @@ data/
 *.spec.bak
 
 installer/output/
+
+# Local / Cursor workspace copy of Windows PyInstaller bundle (do not commit)
+NPUオーディオ作成アプリ/
