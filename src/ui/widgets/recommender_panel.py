@@ -64,37 +64,44 @@ class RecommenderPanel(QGroupBox):
     track_skipped = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__("AI Recommendations", parent)
+        super().__init__("AI おすすめ", parent)
 
         layout = QVBoxLayout(self)
 
-        profile_label = QLabel("Preference Profile")
+        profile_label = QLabel("好みのプロファイル")
         profile_label.setObjectName("sectionTitle")
         layout.addWidget(profile_label)
 
         self._preference_bars: dict[str, PreferenceBar] = {}
-        feature_names = [
-            "Energy", "Valence", "Tempo", "Danceability",
-            "Acousticness", "Instrumentalness", "Speechiness", "Liveness",
+        # Keys match recommender FEATURE_NAMES (English); labels are Japanese UI.
+        feature_rows = [
+            ("energy", "エネルギー"),
+            ("valence", "ポジティブさ"),
+            ("tempo", "テンポ"),
+            ("danceability", "ダンス性"),
+            ("acousticness", "アコースティック性"),
+            ("instrumentalness", "インストゥルメンタル性"),
+            ("speechiness", "スピーチ性"),
+            ("liveness", "ライブ感"),
         ]
-        for name in feature_names:
-            bar = PreferenceBar(name)
-            self._preference_bars[name.lower()] = bar
+        for key, label in feature_rows:
+            bar = PreferenceBar(label)
+            self._preference_bars[key] = bar
             layout.addWidget(bar)
 
         btn_row = QHBoxLayout()
-        self._like_btn = QPushButton("Like")
+        self._like_btn = QPushButton("好き")
         self._like_btn.setObjectName("primaryButton")
         self._like_btn.clicked.connect(self.track_liked.emit)
 
-        self._skip_btn = QPushButton("Skip")
+        self._skip_btn = QPushButton("スキップ")
         self._skip_btn.clicked.connect(self.track_skipped.emit)
 
         btn_row.addWidget(self._like_btn)
         btn_row.addWidget(self._skip_btn)
         layout.addLayout(btn_row)
 
-        rec_label = QLabel("Recommended Tracks")
+        rec_label = QLabel("おすすめトラック")
         rec_label.setObjectName("sectionTitle")
         layout.addWidget(rec_label)
 
@@ -103,7 +110,7 @@ class RecommenderPanel(QGroupBox):
         self._rec_list.setAlternatingRowColors(True)
         layout.addWidget(self._rec_list)
 
-        self._learning_label = QLabel("Learning from your listening...")
+        self._learning_label = QLabel("再生から学習しています…")
         self._learning_label.setObjectName("statusLabel")
         self._learning_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._learning_label)
@@ -120,20 +127,20 @@ class RecommenderPanel(QGroupBox):
         for rec in recommendations:
             if rec.get("type") == "preference_profile":
                 continue
-            title = rec.get("title", "Unknown")
-            artist = rec.get("artist", "Unknown")
+            title = rec.get("title", "不明")
+            artist = rec.get("artist", "不明")
             source = rec.get("source", "")
             score = rec.get("score", 0)
             text = f"{title} - {artist}"
             if source:
                 text += f" [{source}]"
             item = QListWidgetItem(text)
-            item.setToolTip(f"Match score: {score:.2f}")
+            item.setToolTip(f"マッチ度: {score:.2f}")
             self._rec_list.addItem(item)
 
         if not recommendations:
-            self._learning_label.setText("Play music to start learning your preferences...")
+            self._learning_label.setText("音楽を再生すると、好みの学習が始まります…")
         else:
             self._learning_label.setText(
-                f"Analyzed {len(recommendations)} tracks | Learning active"
+                f"{len(recommendations)} 曲を解析しました | 学習中"
             )

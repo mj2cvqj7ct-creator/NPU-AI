@@ -77,7 +77,7 @@ class DACControlPanel(QGroupBox):
         # Status row
         status_row = QHBoxLayout()
         self._status_led = DACStatusIndicator()
-        self._status_label = QLabel("Disconnected")
+        self._status_label = QLabel("未接続")
         self._status_label.setObjectName("statusLabel")
         self._chip_label = QLabel("DAC: ES9038PRO")
         self._chip_label.setObjectName("valueLabel")
@@ -87,13 +87,13 @@ class DACControlPanel(QGroupBox):
         status_row.addWidget(self._chip_label)
         layout.addLayout(status_row)
 
-        self._pipeline_rates_label = QLabel("Pipeline: loopback — → out —")
+        self._pipeline_rates_label = QLabel("パイプライン: ループバック — → 出力 —")
         self._pipeline_rates_label.setObjectName("statusLabel")
         self._pipeline_rates_label.setWordWrap(True)
         self._pipeline_rates_label.setToolTip(
-            "Windows default playback mix (loopback) vs DAC output sample rate. "
-            "Resample: polyphase in the processing path. "
-            "When idle, loopback rate is re-probed about every 1.5 s.",
+            "Windows の既定再生ミックス（ループバック）と DAC 出力のサンプルレートです。"
+            "リサンプルはパイプライン内のポリフェーズ処理です。"
+            "待機中はループバックレートを約 1.5 秒ごとに再取得します。",
         )
         layout.addWidget(self._pipeline_rates_label)
 
@@ -101,7 +101,7 @@ class DACControlPanel(QGroupBox):
         config_row = QHBoxLayout()
 
         sr_group = QVBoxLayout()
-        sr_group.addWidget(QLabel("Sample Rate"))
+        sr_group.addWidget(QLabel("サンプルレート"))
         self._sample_rate = QComboBox()
         for sr in SampleRate:
             self._sample_rate.addItem(f"{sr.value:,} Hz", sr.value)
@@ -111,7 +111,7 @@ class DACControlPanel(QGroupBox):
         config_row.addLayout(sr_group)
 
         bd_group = QVBoxLayout()
-        bd_group.addWidget(QLabel("Bit Depth"))
+        bd_group.addWidget(QLabel("ビット深度"))
         self._bit_depth = QComboBox()
         for bd in BitDepth:
             self._bit_depth.addItem(f"{bd.value}-bit", bd.value)
@@ -124,7 +124,7 @@ class DACControlPanel(QGroupBox):
 
         # DAC filter selection
         filter_row = QHBoxLayout()
-        filter_row.addWidget(QLabel("DAC Filter"))
+        filter_row.addWidget(QLabel("DAC フィルタ"))
         self._dac_filter = QComboBox()
         for df in DACFilter:
             self._dac_filter.addItem(df.value, df.value)
@@ -137,7 +137,7 @@ class DACControlPanel(QGroupBox):
         buffer_row = QHBoxLayout()
 
         buf_group = QVBoxLayout()
-        buf_group.addWidget(QLabel("Buffer Size (ms)"))
+        buf_group.addWidget(QLabel("バッファサイズ（ms）"))
         self._buffer_size = QSpinBox()
         self._buffer_size.setRange(1, 100)
         self._buffer_size.setValue(10)
@@ -146,7 +146,7 @@ class DACControlPanel(QGroupBox):
         buffer_row.addLayout(buf_group)
 
         lat_group = QVBoxLayout()
-        lat_group.addWidget(QLabel("Latency (ms)"))
+        lat_group.addWidget(QLabel("レイテンシ（ms）"))
         self._latency = QSpinBox()
         self._latency.setRange(1, 50)
         self._latency.setValue(5)
@@ -158,15 +158,15 @@ class DACControlPanel(QGroupBox):
 
         # Triple-buffer + exclusive mode
         mode_row = QHBoxLayout()
-        self._exclusive_check = QCheckBox("WASAPI Exclusive Mode")
+        self._exclusive_check = QCheckBox("WASAPI 排他モード")
         self._exclusive_check.setChecked(True)
-        self._exclusive_check.setToolTip("Bit-perfect output via WASAPI exclusive mode")
+        self._exclusive_check.setToolTip("WASAPI 排他モードでビットパーフェクトに近い出力")
         self._exclusive_check.toggled.connect(self._emit_config)
 
-        self._triple_buf_check = QCheckBox("Triple Buffering")
+        self._triple_buf_check = QCheckBox("トリプルバッファ")
         self._triple_buf_check.setChecked(True)
         self._triple_buf_check.setToolTip(
-            "Triple-buffer for zero-dropout NPU streaming"
+            "NPU ストリーミングでドロップアウトを抑えるトリプルバッファ"
         )
         self._triple_buf_check.toggled.connect(self._emit_config)
 
@@ -176,23 +176,23 @@ class DACControlPanel(QGroupBox):
 
         # NPU optimize button + health display
         btn_row = QHBoxLayout()
-        self._optimize_btn = QPushButton("NPU Optimize")
+        self._optimize_btn = QPushButton("NPU で最適化")
         self._optimize_btn.setObjectName("primaryButton")
         self._optimize_btn.clicked.connect(self.optimize_requested.emit)
         self._optimize_btn.setToolTip(
-            "Auto-optimize buffer and latency for NPU processing"
+            "NPU 処理向けにバッファとレイテンシを自動調整します"
         )
 
-        self._resync_loopback_btn = QPushButton("Resync loopback")
+        self._resync_loopback_btn = QPushButton("ループバック再同期")
         self._resync_loopback_btn.setObjectName("secondaryButton")
         self._resync_loopback_btn.clicked.connect(
             self.loopback_resync_requested.emit,
         )
         self._resync_loopback_btn.setToolTip(
-            "Re-probe Windows default playback mix and sync timing. "
-            "While processing: restarts WASAPI loopback. "
-            "While stopped: refreshes probe for Pipeline/Rates only. "
-            "Shortcut: Ctrl+Shift+R.",
+            "Windows の既定再生ミックスを再取得してタイミングを合わせます。"
+            "処理中は WASAPI ループバックを再起動します。"
+            "停止中はパイプライン／レート表示のみ更新します。"
+            "ショートカット: Ctrl+Shift+R",
         )
 
         self._info_label = QLabel("")
@@ -206,9 +206,9 @@ class DACControlPanel(QGroupBox):
 
         # Health monitoring
         health_row = QHBoxLayout()
-        self._health_label = QLabel("Buffer Health: 100%")
+        self._health_label = QLabel("バッファ健全性: 100%")
         self._health_label.setObjectName("valueLabel")
-        self._dropout_label = QLabel("Dropouts: 0")
+        self._dropout_label = QLabel("ドロップアウト: 0")
         self._dropout_label.setObjectName("statusLabel")
         self._npu_time_label = QLabel("NPU: -- ms")
         self._npu_time_label.setObjectName("statusLabel")
@@ -223,12 +223,12 @@ class DACControlPanel(QGroupBox):
         out = int(info["output_hz"])
         if info["resampling"]:
             self._pipeline_rates_label.setText(
-                f"Pipeline: loopback {lb} Hz → out {out} Hz (resample)",
+                f"パイプライン: ループバック {lb} Hz → 出力 {out} Hz（リサンプル）",
             )
             self._pipeline_rates_label.setStyleSheet("color: #FDCB6E;")
         else:
             self._pipeline_rates_label.setText(
-                f"Pipeline: loopback {lb} Hz — matched to out {out} Hz",
+                f"パイプライン: ループバック {lb} Hz — 出力 {out} Hz と一致",
             )
             self._pipeline_rates_label.setStyleSheet("color: #55EFC4;")
 
@@ -282,7 +282,7 @@ class DACControlPanel(QGroupBox):
 
         # Health monitoring
         health = status_info.get("buffer_health", 1.0)
-        self._health_label.setText(f"Buffer Health: {health * 100:.0f}%")
+        self._health_label.setText(f"バッファ健全性: {health * 100:.0f}%")
         if health >= 0.8:
             self._health_label.setStyleSheet("color: #00B894;")
         elif health >= 0.5:
@@ -291,7 +291,7 @@ class DACControlPanel(QGroupBox):
             self._health_label.setStyleSheet("color: #E17055;")
 
         dropouts = status_info.get("dropout_count", 0)
-        self._dropout_label.setText(f"Dropouts: {dropouts}")
+        self._dropout_label.setText(f"ドロップアウト: {dropouts}")
 
         npu_ms = status_info.get("npu_processing_ms", 0)
         npu_peak = status_info.get("npu_peak_ms", 0)
@@ -310,8 +310,8 @@ class DACControlPanel(QGroupBox):
             for w in (self._buffer_size, self._latency):
                 w.blockSignals(False)
         self._info_label.setText(
-            f"Optimized: buffer={settings.get('buffer_size_ms')}ms, "
-            f"latency={settings.get('latency_ms')}ms, "
-            f"ASIO={settings.get('asio_buffer_size', 256)}, "
-            f"filter={settings.get('dac_filter', 'N/A')}"
+            f"最適化済み: バッファ={settings.get('buffer_size_ms')}ms、"
+            f"レイテンシ={settings.get('latency_ms')}ms、"
+            f"ASIO={settings.get('asio_buffer_size', 256)}、"
+            f"フィルタ={settings.get('dac_filter', 'N/A')}"
         )
