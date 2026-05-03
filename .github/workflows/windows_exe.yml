@@ -6,6 +6,9 @@ permissions:
 
 on:
   workflow_dispatch:
+  schedule:
+    # Weekly refresh so Releases stay downloadable even without recent code pushes.
+    - cron: "17 6 * * 1"
   push:
     branches: ["main", "cursor/**"]
     paths:
@@ -50,8 +53,10 @@ jobs:
 
   publish_release:
     needs: pyinstaller
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download Windows zip
         uses: actions/download-artifact@v6
@@ -62,6 +67,7 @@ jobs:
       - name: Publish to GitHub Releases
         uses: ncipollo/release-action@v1
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: release-asset/NPU_Audio_Enhancer_windows.zip
           name: Windows EXE (rolling)
           tag: windows-exe
