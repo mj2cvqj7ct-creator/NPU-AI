@@ -19,11 +19,9 @@ _PROJECT_SENTINELS = ("requirements.txt", "build.spec", "pyproject.toml")
 
 
 def get_desktop_path() -> str:
-    """Return the user's Desktop directory path.
+    """User Desktop folder: join(expanduser('home'), 'Desktop').
 
-    Uses ``~/Desktop`` (or ``%USERPROFILE%\\Desktop`` on Windows via expanduser).
-    Avoids ``ctypes`` / ``SHGetFolderPathW`` so static analyzers and non-Windows
-    CI do not flag ``windll`` / ``wintypes`` usage.
+    Portable (Windows/macOS/Linux). No ctypes / shell32 (avoids analyzer noise).
     """
     return os.path.join(os.path.expanduser("~"), "Desktop")
 
