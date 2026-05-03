@@ -5,7 +5,14 @@ Double-click this EXE to see a menu of all available actions.
 
 from __future__ import annotations
 
+import os
 import sys
+
+if not getattr(sys, "frozen", False):
+    _scripts_dir = os.path.dirname(os.path.abspath(__file__))
+    _repo_root = os.path.dirname(_scripts_dir)
+    if _repo_root not in sys.path:
+        sys.path.insert(0, _repo_root)
 
 from scripts.common import APP_NAME, APP_VERSION, print_header
 
