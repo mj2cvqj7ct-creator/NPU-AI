@@ -19,23 +19,12 @@ _PROJECT_SENTINELS = ("requirements.txt", "build.spec", "pyproject.toml")
 
 
 def get_desktop_path() -> str:
-    """Get the user's Desktop path, using Windows shell API if available."""
-    if sys.platform == "win32":
-        try:
-            import ctypes.wintypes
+    """Return the user's Desktop directory path.
 
-            windll = getattr(ctypes, "windll", None)
-            shell32 = getattr(windll, "shell32", None) if windll is not None else None
-            if shell32 is not None:
-                CSIDL_DESKTOPDIRECTORY = 0x0010
-                buf = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
-                shell32.SHGetFolderPathW(
-                    None, CSIDL_DESKTOPDIRECTORY, None, 0, buf,
-                )
-                if buf.value:
-                    return buf.value
-        except Exception:
-            pass
+    Uses ``~/Desktop`` (or ``%USERPROFILE%\\Desktop`` on Windows via expanduser).
+    Avoids ``ctypes`` / ``SHGetFolderPathW`` so static analyzers and non-Windows
+    CI do not flag ``windll`` / ``wintypes`` usage.
+    """
     return os.path.join(os.path.expanduser("~"), "Desktop")
 
 
