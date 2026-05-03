@@ -30,3 +30,5 @@ installer/output/
 
 # Local / Cursor workspace copy of Windows PyInstaller bundle (do not commit)
 NPUオーディオ作成アプリ/
+Windows_EXE_Release/
+Windows_EXE_Release.zip
