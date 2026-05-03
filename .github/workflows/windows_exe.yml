@@ -14,9 +14,9 @@ jobs:
   pyinstaller:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -38,7 +38,7 @@ jobs:
           Compress-Archive -Path "dist/NPU_Audio_Enhancer" -DestinationPath "NPU_Audio_Enhancer_windows.zip" -Force
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: NPU_Audio_Enhancer_windows
           path: NPU_Audio_Enhancer_windows.zip
