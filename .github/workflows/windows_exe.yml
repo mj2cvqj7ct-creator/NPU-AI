@@ -1,0 +1,44 @@
+name: Windows EXE (PyInstaller)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main", "cursor/**"]
+    paths:
+      - "src/**"
+      - "build.spec"
+      - "requirements-windows-build.txt"
+      - ".github/workflows/windows_exe.yml"
+
+jobs:
+  pyinstaller:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-windows-build.txt
+
+      - name: Ensure models directory
+        run: mkdir models
+
+      - name: Build with PyInstaller
+        run: pyinstaller build.spec --noconfirm
+
+      - name: Zip one-folder bundle
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/NPU_Audio_Enhancer" -DestinationPath "NPU_Audio_Enhancer_windows.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NPU_Audio_Enhancer_windows
+          path: NPU_Audio_Enhancer_windows.zip
+          retention-days: 14
