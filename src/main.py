@@ -47,11 +47,16 @@ def main() -> int:
         )
 
     app = QApplication(sys.argv)
-    app.setApplicationName("NPU Audio Enhancer")
+    app.setApplicationName("NPU オーディオエンハンサー")
     app.setOrganizationName("NPU-AI")
     app.setApplicationVersion("1.0.0")
 
-    font = QFont("Segoe UI", 10)
+    font = QFont()
+    if sys.platform == "win32":
+        font.setFamilies(["Yu Gothic UI", "Meiryo UI", "Segoe UI", "sans-serif"])
+    else:
+        font.setFamilies(["Segoe UI", "Noto Sans CJK JP", "sans-serif"])
+    font.setPointSize(10)
     app.setFont(font)
 
     logger.info("Initializing audio processing engine...")

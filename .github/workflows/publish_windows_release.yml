@@ -1,0 +1,53 @@
+# Publishes the PyInstaller Windows bundle to a GitHub Release (not committed to git).
+# Run: Actions → "Publish Windows EXE to Release" → Run workflow
+# Download: Releases → "windows-exe" → NPU_Audio_Enhancer_windows.zip
+
+name: Publish Windows EXE to Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-windows-build.txt
+
+      - name: Ensure models directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Path models -Force | Out-Null
+
+      - name: Build with PyInstaller
+        run: pyinstaller build.spec --noconfirm
+
+      - name: Zip one-folder bundle
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/NPU_Audio_Enhancer" -DestinationPath "NPU_Audio_Enhancer_windows.zip" -Force
+
+      - name: Publish GitHub Release (rolling tag windows-exe)
+        uses: ncipollo/release-action@v1
+        with:
+          tag: windows-exe
+          name: "NPU オーディオエンハンサー（Windows EXE）"
+          artifacts: NPU_Audio_Enhancer_windows.zip
+          allowUpdates: true
+          replacesArtifacts: true
+          generateReleaseNotes: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            **ZIP の中身:** `NPU_Audio_Enhancer.exe` と `_internal` フォルダ（展開後、そのまま実行）
+
+            ビルドコミット: `${{ github.sha }}`

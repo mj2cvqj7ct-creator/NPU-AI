@@ -96,22 +96,22 @@ class SpatialControlPanel(QGroupBox):
     params_changed = pyqtSignal(dict)
 
     def __init__(self, parent: QWidget | None = None):
-        super().__init__("Spatial Audio & Holographic", parent)
+        super().__init__("空間オーディオとホログラフィック", parent)
 
         layout = QVBoxLayout(self)
 
-        self._enable = QCheckBox("Enable Spatial Processing")
+        self._enable = QCheckBox("空間処理を有効にする")
         self._enable.setChecked(True)
         self._enable.toggled.connect(self._emit_params)
 
-        self._width = EffectSlider("Soundstage", 0, 1.5, 0.7)
-        self._depth = EffectSlider("Depth", 0, 1.0, 0.5)
-        self._height = EffectSlider("Height", 0, 1.0, 0.3)
-        self._holographic = EffectSlider("Holographic", 0, 1.0, 0.6)
-        self._crossfeed = EffectSlider("Crossfeed", 0, 1.0, 0.3)
-        self._center = EffectSlider("Center Focus", 0, 1.0, 0.5)
-        self._stereo = EffectSlider("Stereo Enhance", 0, 1.0, 0.4)
-        self._immersion = EffectSlider("Immersion", 0, 1.0, 0.5)
+        self._width = EffectSlider("サウンドステージ", 0, 1.5, 0.7)
+        self._depth = EffectSlider("奥行き", 0, 1.0, 0.5)
+        self._height = EffectSlider("高さ", 0, 1.0, 0.3)
+        self._holographic = EffectSlider("ホログラフィック", 0, 1.0, 0.6)
+        self._crossfeed = EffectSlider("クロスフィード", 0, 1.0, 0.3)
+        self._center = EffectSlider("センター定位", 0, 1.0, 0.5)
+        self._stereo = EffectSlider("ステレオ拡張", 0, 1.0, 0.4)
+        self._immersion = EffectSlider("没入感", 0, 1.0, 0.5)
 
         sliders = [
             self._width, self._depth, self._height, self._holographic,
@@ -147,18 +147,18 @@ class SeparationControlPanel(QGroupBox):
     params_changed = pyqtSignal(dict)
 
     def __init__(self, parent: QWidget | None = None):
-        super().__init__("Source Separation", parent)
+        super().__init__("ソース分離", parent)
 
         layout = QVBoxLayout(self)
 
-        self._enable = QCheckBox("Enable Source Separation")
+        self._enable = QCheckBox("ソース分離を有効にする")
         self._enable.setChecked(True)
         self._enable.toggled.connect(self._emit_params)
 
-        self._vocal_boost = EffectSlider("Vocal Boost", 0, 1.0, 0.3)
-        self._instrument = EffectSlider("Instrument Clarity", 0, 1.0, 0.5)
-        self._bass = EffectSlider("Bass Enhance", 0, 1.0, 0.2)
-        self._drums = EffectSlider("Drum Punch", 0, 1.0, 0.2)
+        self._vocal_boost = EffectSlider("ボーカルブースト", 0, 1.0, 0.3)
+        self._instrument = EffectSlider("楽器の明瞭さ", 0, 1.0, 0.5)
+        self._bass = EffectSlider("低音の強化", 0, 1.0, 0.2)
+        self._drums = EffectSlider("ドラムのパンチ", 0, 1.0, 0.2)
 
         for slider in [self._vocal_boost, self._instrument, self._bass, self._drums]:
             slider.value_changed.connect(lambda _: self._emit_params())
@@ -188,23 +188,23 @@ class EnhancerControlPanel(QGroupBox):
     params_changed = pyqtSignal(dict)
 
     def __init__(self, parent: QWidget | None = None):
-        super().__init__("Audio Enhancement", parent)
+        super().__init__("音質強化", parent)
 
         layout = QVBoxLayout(self)
 
-        self._enable = QCheckBox("Enable Enhancement")
+        self._enable = QCheckBox("音質強化を有効にする")
         self._enable.setChecked(True)
         self._enable.toggled.connect(self._emit_params)
 
-        self._npu_blend = EffectSlider("AI spectral (NPU)", 0, 1.0, 0.35)
+        self._npu_blend = EffectSlider("AI スペクトル（NPU）", 0, 1.0, 0.35)
 
-        self._warmth = EffectSlider("Warmth", 0, 1.0, 0.3)
-        self._clarity = EffectSlider("Clarity", 0, 1.0, 0.5)
-        self._presence = EffectSlider("Presence", 0, 1.0, 0.4)
-        self._air = EffectSlider("Air", 0, 1.0, 0.3)
-        self._bass_boost = EffectSlider("Bass Boost", 0, 1.0, 0.2)
-        self._exciter = EffectSlider("Harmonic Exciter", 0, 1.0, 0.2)
-        self._stereo_width = EffectSlider("Stereo Width", -0.5, 1.0, 0.0)
+        self._warmth = EffectSlider("温かみ", 0, 1.0, 0.3)
+        self._clarity = EffectSlider("明瞭さ", 0, 1.0, 0.5)
+        self._presence = EffectSlider("存在感", 0, 1.0, 0.4)
+        self._air = EffectSlider("空気感", 0, 1.0, 0.3)
+        self._bass_boost = EffectSlider("低音ブースト", 0, 1.0, 0.2)
+        self._exciter = EffectSlider("ハーモニックエキサイター", 0, 1.0, 0.2)
+        self._stereo_width = EffectSlider("ステレオ幅", -0.5, 1.0, 0.0)
 
         sliders = [
             self._npu_blend,
@@ -241,15 +241,15 @@ class NoiseReducerControlPanel(QGroupBox):
     params_changed = pyqtSignal(dict)
 
     def __init__(self, parent: QWidget | None = None):
-        super().__init__("AI Noise Reduction (NPU)", parent)
+        super().__init__("AI ノイズ低減（NPU）", parent)
 
         layout = QVBoxLayout(self)
 
-        self._enable = QCheckBox("Enable")
+        self._enable = QCheckBox("有効")
         self._enable.setChecked(False)
         self._enable.toggled.connect(self._emit_params)
 
-        self._amount = EffectSlider("Attenuation", 0, 1.0, 0.25)
+        self._amount = EffectSlider("減衰量", 0, 1.0, 0.25)
 
         self._amount.value_changed.connect(lambda _: self._emit_params())
 
@@ -272,20 +272,20 @@ class DepthControlPanel(QGroupBox):
     params_changed = pyqtSignal(dict)
 
     def __init__(self, parent: QWidget | None = None):
-        super().__init__("Depth & Soundstage", parent)
+        super().__init__("奥行きとサウンドステージ", parent)
 
         layout = QVBoxLayout(self)
 
-        self._enable = QCheckBox("Enable Depth Processing")
+        self._enable = QCheckBox("奥行き処理を有効にする")
         self._enable.setChecked(True)
         self._enable.toggled.connect(self._emit_params)
 
-        self._depth = EffectSlider("Depth Amount", 0, 1.0, 0.5)
-        self._room = EffectSlider("Room Size", 0, 1.0, 0.4)
-        self._damping = EffectSlider("Damping", 0, 1.0, 0.5)
-        self._pre_delay = EffectSlider("Pre-delay", 0, 50.0, 15.0, " ms", 0)
-        self._early_ref = EffectSlider("Early Reflections", 0, 1.0, 0.3)
-        self._late_rev = EffectSlider("Late Reverb", 0, 1.0, 0.2)
+        self._depth = EffectSlider("奥行き量", 0, 1.0, 0.5)
+        self._room = EffectSlider("ルームサイズ", 0, 1.0, 0.4)
+        self._damping = EffectSlider("減衰（ダンピング）", 0, 1.0, 0.5)
+        self._pre_delay = EffectSlider("プリディレイ", 0, 50.0, 15.0, " ms", 0)
+        self._early_ref = EffectSlider("早期反射", 0, 1.0, 0.3)
+        self._late_rev = EffectSlider("後期リバーブ", 0, 1.0, 0.2)
 
         sliders = [
             self._depth, self._room, self._damping,
@@ -326,20 +326,20 @@ class MasterControlBar(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4)
 
-        self._play_btn = QPushButton("Start")
+        self._play_btn = QPushButton("開始")
         self._play_btn.setObjectName("primaryButton")
         self._play_btn.setCheckable(True)
         self._play_btn.setMinimumWidth(100)
         self._play_btn.toggled.connect(self._on_play_toggled)
 
-        self._bypass_btn = QPushButton("Bypass")
+        self._bypass_btn = QPushButton("バイパス")
         self._bypass_btn.setCheckable(True)
         self._bypass_btn.toggled.connect(self.bypass_toggled.emit)
 
-        self._volume = EffectSlider("Master", 0, 2.0, 1.0, "", 2)
+        self._volume = EffectSlider("マスター", 0, 2.0, 1.0, "", 2)
         self._volume.value_changed.connect(self.volume_changed.emit)
 
-        self._status = QLabel("Ready")
+        self._status = QLabel("準備完了")
         self._status.setObjectName("statusLabel")
 
         layout.addWidget(self._play_btn)
@@ -348,7 +348,7 @@ class MasterControlBar(QWidget):
         layout.addWidget(self._status)
 
     def _on_play_toggled(self, checked: bool) -> None:
-        self._play_btn.setText("Stop" if checked else "Start")
+        self._play_btn.setText("停止" if checked else "開始")
         self.play_toggled.emit(checked)
 
     @property

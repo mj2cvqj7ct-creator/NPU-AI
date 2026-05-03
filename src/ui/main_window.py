@@ -57,7 +57,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._app = app_controller
 
-        self.setWindowTitle("NPU Audio Enhancer - Snapdragon X Elite")
+        self.setWindowTitle("NPU オーディオエンハンサー — Snapdragon X Elite")
         self.setMinimumSize(1200, 800)
         self.resize(1500, 950)
 
@@ -77,6 +77,7 @@ class MainWindow(QMainWindow):
         self._rate_defer_timer.setSingleShot(True)
         self._rate_defer_timer.setInterval(150)
         self._rate_defer_timer.timeout.connect(self._update_pipeline_rate_labels)
+        self._stats_ticks = 0
         self._start_mm_notification()
         QTimer.singleShot(0, self._on_startup_idle_probe)
 
@@ -112,6 +113,8 @@ class MainWindow(QMainWindow):
         reasons = self._mm_pending_reasons.copy()
         self._mm_pending_reasons.clear()
         invalidate_default_render_endpoint_cache()
+        if self._app:
+            self._app.dac_controller.refresh_detection()
         if not self._app:
             return
         changed = False
@@ -120,7 +123,7 @@ class MainWindow(QMainWindow):
             if changed:
                 label = ", ".join(sorted(reasons)) if reasons else "device"
                 self._status_message(
-                    f"Audio device updated ({label}) — capture resynced",
+                    f"オーディオデバイスを更新しました（{label}）— キャプチャを再同期しました",
                     5000,
                 )
                 self._refresh_rates_after_capture_restart()
@@ -139,17 +142,17 @@ class MainWindow(QMainWindow):
         out = int(ri["output_hz"])
         if self._master_bar.is_playing:
             if ri["resampling"]:
-                self._rate_label.setText(f"Rates: {lb}→{out} Hz")
+                self._rate_label.setText(f"レート: {lb}→{out} Hz")
                 self._rate_label.setStyleSheet("color: #FDCB6E;")
             else:
-                self._rate_label.setText(f"Rates: {lb} Hz")
+                self._rate_label.setText(f"レート: {lb} Hz")
                 self._rate_label.setStyleSheet("color: #55EFC4;")
         else:
             if ri["resampling"]:
-                self._rate_label.setText(f"Rates: {lb}→{out} (idle)")
+                self._rate_label.setText(f"レート: {lb}→{out}（待機）")
                 self._rate_label.setStyleSheet("color: #8B949E;")
             else:
-                self._rate_label.setText(f"Rates: {lb} Hz (idle)")
+                self._rate_label.setText(f"レート: {lb} Hz（待機）")
                 self._rate_label.setStyleSheet("color: #8B949E;")
 
     def _setup_ui(self) -> None:
@@ -183,23 +186,25 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(header)
         layout.setContentsMargins(20, 10, 20, 10)
 
-        title = QLabel("NPU Audio Enhancer")
+        title = QLabel("NPU オーディオエンハンサー")
         title.setObjectName("headerTitle")
-        title_font = QFont("Segoe UI", 22, QFont.Weight.Bold)
+        title_font = self.font()
+        title_font.setPointSize(22)
+        title_font.setWeight(QFont.Weight.Bold)
         title.setFont(title_font)
         title.setStyleSheet("color: #A29BFE; letter-spacing: 1.5px;")
 
         subtitle = QLabel(
-            "Snapdragon X Elite NPU  |  Real-time AI Processing  |  "
+            "Snapdragon X Elite NPU  |  リアルタイム AI 処理  |  "
             "Spotify / Apple Music / YouTube Music"
         )
         subtitle.setObjectName("statusLabel")
 
-        npu_status = QLabel("NPU: Initializing...")
+        npu_status = QLabel("NPU: …")
         npu_status.setObjectName("npuBadge")
         self._npu_status_label = npu_status
 
-        dac_badge = QLabel("DAC: Detecting...")
+        dac_badge = QLabel("出力: …")
         dac_badge.setObjectName("statusLabel")
         self._dac_badge = dac_badge
 
@@ -218,7 +223,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(panel)
         layout.setSpacing(10)
 
-        viz_label = QLabel("Audio Analysis")
+        viz_label = QLabel("オーディオ解析")
         viz_label.setObjectName("sectionTitle")
         layout.addWidget(viz_label)
 
@@ -230,7 +235,7 @@ class MainWindow(QMainWindow):
         self._waveform.setMinimumHeight(120)
         layout.addWidget(self._waveform)
 
-        stems_label = QLabel("Source Separation")
+        stems_label = QLabel("ソース分離")
         stems_label.setObjectName("sectionTitle")
         layout.addWidget(stems_label)
 
@@ -239,18 +244,18 @@ class MainWindow(QMainWindow):
 
         stats_row = QHBoxLayout()
         stats_row.setSpacing(16)
-        self._latency_label = QLabel("Latency: -- ms")
+        self._latency_label = QLabel("遅延: -- ms")
         self._latency_label.setObjectName("valueLabel")
-        self._cpu_label = QLabel("CPU: --%")
+        self._cpu_label = QLabel("CPU: -- %")
         self._cpu_label.setObjectName("valueLabel")
-        self._buffer_label = QLabel("Buffer: OK")
+        self._buffer_label = QLabel("バッファ: OK")
         self._buffer_label.setObjectName("valueLabel")
-        self._rate_label = QLabel("Rates: —")
+        self._rate_label = QLabel("レート: —")
         self._rate_label.setObjectName("valueLabel")
         self._rate_label.setToolTip(
-            "Loopback capture rate vs DAC/output rate. "
-            "Arrow means polyphase resample in the pipeline. "
-            "When idle, loopback shows the probed Windows default mix (~1.5s cache).",
+            "ループバックのキャプチャレートと DAC／出力のサンプルレートです。"
+            "矢印（→）はパイプライン内のポリフェーズリサンプルを表します。"
+            "待機中は、Windows の既定再生ミックスを約 1.5 秒キャッシュで表示します。",
         )
         self._npu_load_label = QLabel("NPU: --")
         self._npu_load_label.setObjectName("valueLabel")
@@ -273,13 +278,13 @@ class MainWindow(QMainWindow):
         self._tabs = tabs
 
         effects_tab = self._create_effects_tab()
-        tabs.addTab(effects_tab, "Effects")
+        tabs.addTab(effects_tab, "エフェクト")
 
         dac_tab = self._create_dac_tab()
         tabs.addTab(dac_tab, "SABAJ DAC")
 
         rec_tab = self._create_recommender_tab()
-        tabs.addTab(rec_tab, "AI Recommend")
+        tabs.addTab(rec_tab, "AI おすすめ")
 
         layout.addWidget(tabs)
         return panel
@@ -347,33 +352,33 @@ class MainWindow(QMainWindow):
         menu_bar = self.menuBar()
         assert menu_bar is not None
 
-        file_menu = menu_bar.addMenu("File")
+        file_menu = menu_bar.addMenu("ファイル")
         assert file_menu is not None
-        exit_action = QAction("Exit", self)
+        exit_action = QAction("終了", self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
-        view_menu = menu_bar.addMenu("View")
+        view_menu = menu_bar.addMenu("表示")
         assert view_menu is not None
-        self._always_on_top = QAction("Always on Top", self)
+        self._always_on_top = QAction("常に手前に表示", self)
         self._always_on_top.setCheckable(True)
         self._always_on_top.triggered.connect(self._toggle_always_on_top)
         view_menu.addAction(self._always_on_top)
 
-        help_menu = menu_bar.addMenu("Help")
+        help_menu = menu_bar.addMenu("ヘルプ")
         assert help_menu is not None
-        about_action = QAction("About", self)
+        about_action = QAction("バージョン情報", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
 
-        audio_menu = menu_bar.addMenu("Audio")
+        audio_menu = menu_bar.addMenu("オーディオ")
         assert audio_menu is not None
-        resync_action = QAction("Resync loopback…", self)
+        resync_action = QAction("ループバックを再同期…", self)
         resync_action.setShortcut("Ctrl+Shift+R")
         resync_action.setStatusTip(
-            "Re-probe Windows mix: restarts capture if processing, "
-            "otherwise refreshes idle Pipeline/Rates",
+            "Windows のミックスを再取得します。処理中はキャプチャを再起動し、"
+            "停止中はパイプライン／レート表示のみ更新します。",
         )
         resync_action.triggered.connect(self._on_resync_loopback)
         audio_menu.addAction(resync_action)
@@ -382,7 +387,7 @@ class MainWindow(QMainWindow):
         """Setup status bar."""
         status = QStatusBar()
         self.setStatusBar(status)
-        status.showMessage("Ready - Connect audio source to begin processing")
+        status.showMessage("準備完了 — 音楽を再生して「開始」を押してください")
 
     def _setup_timers(self) -> None:
         """Setup UI update timers."""
@@ -459,14 +464,14 @@ class MainWindow(QMainWindow):
         if self._app:
             if playing:
                 self._app.start_processing()
-                self._master_bar.set_status("Processing...")
-                self._status_message("Audio processing active")
+                self._master_bar.set_status("処理中…")
+                self._status_message("オーディオ処理を開始しました")
                 self._refresh_rates_after_capture_restart()
             else:
                 self._rate_defer_timer.stop()
                 self._app.stop_processing()
-                self._master_bar.set_status("Stopped")
-                self._status_message("Audio processing stopped")
+                self._master_bar.set_status("停止")
+                self._status_message("オーディオ処理を停止しました")
                 self._update_pipeline_rate_labels()
 
     @pyqtSlot()
@@ -477,13 +482,13 @@ class MainWindow(QMainWindow):
             self._app.refresh_loopback_probe_idle()
             self._update_pipeline_rate_labels()
             self._status_message(
-                "Loopback mix re-probed (idle) — Pipeline/Rates updated",
+                "ループバックを再取得しました（待機）— パイプライン／レートを更新しました",
                 4000,
             )
             return
         self._app.force_resync_loopback_capture()
         self._status_message(
-            "Loopback capture resynced (manual)",
+            "ループバックを手動で再同期しました",
             4000,
         )
         self._refresh_rates_after_capture_restart()
@@ -593,99 +598,115 @@ class MainWindow(QMainWindow):
             return
         if self._app.sync_render_endpoint_if_changed():
             self._status_message(
-                "Default playback device or format changed — capture resynced",
+                "既定の再生デバイスまたは形式が変わりました — キャプチャを再同期しました",
                 4000,
             )
             self._refresh_rates_after_capture_restart()
 
     def _update_stats(self) -> None:
         """Update processing statistics display."""
+        self._stats_ticks += 1
         if not self._app:
+            self._npu_status_label.setText("NPU: エンジン未初期化")
+            self._npu_status_label.setStyleSheet(
+                "color: #E17055; border-color: #E17055;",
+            )
+            self._dac_badge.setText("DAC: —")
+            self._dac_badge.setStyleSheet("color: #8B949E;")
             return
 
-        stats = self._app.processor.stats
-        self._latency_label.setText(f"Latency: {stats.processing_time_ms:.1f} ms")
+        if self._stats_ticks % 10 == 0:
+            self._app.dac_controller.refresh_detection()
 
         try:
-            import psutil
+            stats = self._app.processor.stats
+            self._latency_label.setText(f"遅延: {stats.processing_time_ms:.1f} ms")
 
-            cpu = psutil.cpu_percent(interval=None)
-            self._cpu_label.setText(f"CPU: {cpu:.0f}%")
-        except ImportError:
-            pass
+            try:
+                import psutil
 
-        npu_info = self._app.npu_engine.get_device_info()
-        provider = npu_info.get("provider", "N/A")
-        if npu_info.get("is_npu"):
-            self._npu_status_label.setText(f"NPU: Active ({provider})")
-            self._npu_status_label.setStyleSheet(
-                "color: #00B894; border-color: #00B894;"
-            )
-        elif provider != "None":
-            self._npu_status_label.setText(f"NPU: {provider}")
-            self._npu_status_label.setStyleSheet(
-                "color: #FDCB6E; border-color: #FDCB6E;"
-            )
-        else:
-            self._npu_status_label.setText("NPU: DSP Mode")
-            self._npu_status_label.setStyleSheet(
-                "color: #8B949E; border-color: #8B949E;"
-            )
+                cpu = psutil.cpu_percent(interval=None)
+                self._cpu_label.setText(f"CPU: {cpu:.0f}%")
+            except ImportError:
+                pass
 
-        npu_infer_ms = float(npu_info.get("avg_inference_ms", 0.0))
-        if npu_infer_ms > 0:
-            self._npu_load_label.setText(f"Infer: {npu_infer_ms:.2f} ms avg")
-        else:
-            self._npu_load_label.setText("Infer: —")
-
-        lines = [
-            f"Provider: {provider}",
-            f"Models loaded: {npu_info.get('models_loaded', 0)}",
-        ]
-        mstats = npu_info.get("model_stats") or {}
-        for name in sorted(mstats.keys()):
-            row = mstats[name]
-            cnt = int(row.get("infer_count", 0))
-            avg = float(row.get("avg_ms", 0.0))
-            if cnt > 0:
-                lines.append(f"{name}: {cnt} calls, {avg:.2f} ms avg")
+            npu_info = self._app.npu_engine.get_device_info()
+            provider = npu_info.get("provider", "N/A")
+            if npu_info.get("is_npu"):
+                self._npu_status_label.setText(f"NPU: 有効（{provider}）")
+                self._npu_status_label.setStyleSheet(
+                    "color: #00B894; border-color: #00B894;",
+                )
+            elif provider != "None":
+                self._npu_status_label.setText(f"NPU: {provider}")
+                self._npu_status_label.setStyleSheet(
+                    "color: #FDCB6E; border-color: #FDCB6E;",
+                )
             else:
-                lines.append(f"{name}: —")
-        self._npu_load_label.setToolTip("\n".join(lines))
-        self._npu_status_label.setToolTip(
-            "ONNX Runtime execution provider for AI effects. "
-            "Hover “Infer” for per-model inference stats.",
-        )
+                self._npu_status_label.setText("NPU: DSP モード（ONNX なし）")
+                self._npu_status_label.setStyleSheet(
+                    "color: #8B949E; border-color: #8B949E;",
+                )
 
-        dac_status = self._app.dac_controller.get_status_info()
-        self._dac_panel.update_status(dac_status)
+            npu_infer_ms = float(npu_info.get("avg_inference_ms", 0.0))
+            if npu_infer_ms > 0:
+                self._npu_load_label.setText(f"推論: 平均 {npu_infer_ms:.2f} ms")
+            else:
+                self._npu_load_label.setText("推論: —")
 
-        out_stats = self._app.output_stats
-        out_u = int(out_stats.get("underrun_count", 0))
-        qsz = int(out_stats.get("queue_size", 0))
-        buf_warn = out_u > 0 or qsz > 48
-        self._buffer_label.setText(
-            f"Buffer: {'warn' if buf_warn else 'OK'} (q={qsz})",
-        )
-        if buf_warn:
-            self._buffer_label.setStyleSheet("color: #FDCB6E;")
-        else:
-            self._buffer_label.setStyleSheet("color: #8B949E;")
+            lines = [
+                f"プロバイダ: {provider}",
+                f"読み込んだモデル数: {npu_info.get('models_loaded', 0)}",
+            ]
+            mstats = npu_info.get("model_stats") or {}
+            for name in sorted(mstats.keys()):
+                row = mstats[name]
+                cnt = int(row.get("infer_count", 0))
+                avg = float(row.get("avg_ms", 0.0))
+                if cnt > 0:
+                    lines.append(f"{name}: {cnt} 回、平均 {avg:.2f} ms")
+                else:
+                    lines.append(f"{name}: —")
+            self._npu_load_label.setToolTip("\n".join(lines))
+            self._npu_status_label.setToolTip(
+                "AI エフェクト用の ONNX Runtime 実行プロバイダです。"
+                "「推論」にマウスを載せるとモデル別の統計が表示されます。",
+            )
 
-        self._update_pipeline_rate_labels()
+            dac_status = self._app.dac_controller.get_status_info()
+            self._dac_panel.update_status(dac_status)
 
-        # DAC badge
-        dac_name = dac_status.get("device_name", "N/A")
-        dac_st = dac_status.get("status", "disconnected")
-        if dac_st in ("connected", "streaming"):
-            self._dac_badge.setText(f"DAC: {dac_name}")
-            self._dac_badge.setStyleSheet("color: #00B894;")
-        else:
-            self._dac_badge.setText("DAC: Not Connected")
-            self._dac_badge.setStyleSheet("color: #8B949E;")
+            out_stats = self._app.output_stats
+            out_u = int(out_stats.get("underrun_count", 0))
+            qsz = int(out_stats.get("queue_size", 0))
+            buf_warn = out_u > 0 or qsz > 48
+            self._buffer_label.setText(
+                f"バッファ: {'注意' if buf_warn else 'OK'}（q={qsz}）",
+            )
+            if buf_warn:
+                self._buffer_label.setStyleSheet("color: #FDCB6E;")
+            else:
+                self._buffer_label.setStyleSheet("color: #8B949E;")
 
-        profile = self._app.recommender.preference_profile
-        self._recommender_panel.update_preferences(profile)
+            self._update_pipeline_rate_labels()
+
+            dac_name = dac_status.get("device_name", "N/A")
+            dac_st = dac_status.get("status", "disconnected")
+            if dac_st in ("connected", "streaming"):
+                self._dac_badge.setText(f"出力: {dac_name}")
+                self._dac_badge.setStyleSheet("color: #00B894;")
+            else:
+                self._dac_badge.setText("出力: 未検出")
+                self._dac_badge.setStyleSheet("color: #8B949E;")
+
+            profile = self._app.recommender.preference_profile
+            self._recommender_panel.update_preferences(profile)
+        except Exception:
+            logger.exception("Stats UI update failed; partial refresh next tick")
+            self._npu_status_label.setText("NPU: 表示エラー（ログ参照）")
+            self._npu_status_label.setStyleSheet(
+                "color: #E17055; border-color: #E17055;",
+            )
 
     def _toggle_always_on_top(self, checked: bool) -> None:
         flags = self.windowFlags()
@@ -700,33 +721,40 @@ class MainWindow(QMainWindow):
 
         QMessageBox.about(
             self,
-            "About NPU Audio Enhancer",
-            "<h2>NPU Audio Enhancer v3.0</h2>"
-            "<p>ARM64 Snapdragon X Elite NPU-accelerated real-time audio enhancement</p>"
-            "<p>Dramatically improved features:</p>"
+            "NPU オーディオエンハンサーについて",
+            "<h2>NPU オーディオエンハンサー v3.0</h2>"
+            "<p>ARM64 Snapdragon X Elite の NPU でリアルタイムに音質を強化します。</p>"
+            "<p>主な機能:</p>"
             "<ul>"
-            "<li>Phase-aware source separation with Wiener filtering & HPSS</li>"
-            "<li>512-tap HRTF with pinna notch & concha resonance modeling</li>"
-            "<li>6-band holographic soundstage with allpass diffusion</li>"
-            "<li>12-line FDN reverb with modulated delay lines</li>"
-            "<li>Tape saturation harmonic exciter with transient shaping</li>"
-            "<li>SABAJ A20D ES9038PRO DAC with triple-buffer NPU streaming</li>"
-            "<li>Adam-optimized deep learning recommendations</li>"
-            "<li>Spotify / Apple Music / YouTube Music support</li>"
+            "<li>位相を考慮したソース分離（Wiener フィルタ・HPSS）</li>"
+            "<li>512 タップ HRTF（耳介ノッチ・外耳道共鳴モデル）</li>"
+            "<li>6 バンドのホログラフィックサウンドステージ（オールパス拡散）</li>"
+            "<li>12 ライン FDN リバーブ（変調ディレイ）</li>"
+            "<li>テープ風飽和ハーモニックエキサイターとトランジェント整形</li>"
+            "<li>SABAJ A20D ES9038PRO DAC とトリプルバッファ NPU ストリーミング</li>"
+            "<li>Adam 風の深層学習おすすめ</li>"
+            "<li>Spotify / Apple Music / YouTube Music 向け</li>"
             "</ul>"
-            "<p>Powered by ONNX Runtime + DirectML on Snapdragon X NPU</p>",
+            "<p>ONNX Runtime + DirectML（Snapdragon X NPU）を利用します。</p>",
         )
 
     def update_npu_status(self, info: dict[str, Any]) -> None:
         """Update NPU status display from app controller."""
+        prov = info.get("provider", "N/A")
         if info.get("is_npu"):
-            self._npu_status_label.setText("NPU: Active")
+            self._npu_status_label.setText(f"NPU: 有効（{prov}）")
             self._npu_status_label.setStyleSheet(
-                "color: #00B894; border-color: #00B894;"
+                "color: #00B894; border-color: #00B894;",
+            )
+        elif prov != "None":
+            self._npu_status_label.setText(f"NPU: {prov}")
+            self._npu_status_label.setStyleSheet(
+                "color: #FDCB6E; border-color: #FDCB6E;",
             )
         else:
-            self._npu_status_label.setText(
-                f"NPU: {info.get('provider', 'N/A')}"
+            self._npu_status_label.setText("NPU: DSP モード（ONNX なし）")
+            self._npu_status_label.setStyleSheet(
+                "color: #8B949E; border-color: #8B949E;",
             )
 
     def closeEvent(self, event: QCloseEvent | None) -> None:
