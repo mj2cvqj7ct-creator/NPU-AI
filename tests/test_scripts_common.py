@@ -5,50 +5,52 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
+
+import scripts.common as common
+
+
+def _patch_frozen_sys(argv: list[str], tmp: str) -> SimpleNamespace:
+    """Minimal sys stand-in for get_project_dir() frozen-mode tests."""
+    return SimpleNamespace(
+        argv=argv,
+        frozen=True,
+        executable=os.path.join(tmp, "fake_launcher.exe"),
+    )
 
 
 class TestGetProjectDir(unittest.TestCase):
     def test_project_dir_equal_form(self) -> None:
-        import scripts.common as common
-
         with tempfile.TemporaryDirectory() as tmp:
             marker = os.path.join(tmp, "pyproject.toml")
             with open(marker, "w", encoding="utf-8") as f:
                 f.write("[project]\n")
             fake_argv = ["launcher.exe", f"--project-dir={tmp}", "--other"]
-
-            class _FakeSys:
-                argv = fake_argv
-                frozen = True
-                executable = os.path.join(tmp, "fake_launcher.exe")
-
-            with patch.object(common, "sys", _FakeSys()):
+            with patch.object(
+                common,
+                "sys",
+                _patch_frozen_sys(fake_argv, tmp),
+            ):
                 self.assertEqual(common.get_project_dir(), tmp)
 
     def test_project_dir_space_form(self) -> None:
-        import scripts.common as common
-
         with tempfile.TemporaryDirectory() as tmp:
             marker = os.path.join(tmp, "pyproject.toml")
             with open(marker, "w", encoding="utf-8") as f:
                 f.write("[project]\n")
             fake_argv = ["launcher.exe", "--project-dir", tmp]
-
-            class _FakeSys:
-                argv = fake_argv
-                frozen = True
-                executable = os.path.join(tmp, "fake_launcher.exe")
-
-            with patch.object(common, "sys", _FakeSys()):
+            with patch.object(
+                common,
+                "sys",
+                _patch_frozen_sys(fake_argv, tmp),
+            ):
                 self.assertEqual(common.get_project_dir(), tmp)
 
 
 class TestEnsureVenv(unittest.TestCase):
     def test_creates_venv_in_project_dir(self) -> None:
         """venv must be created under project_dir, not CWD."""
-        import scripts.common as common
-
         with tempfile.TemporaryDirectory() as proj:
             marker = os.path.join(proj, "pyproject.toml")
             with open(marker, "w", encoding="utf-8") as f:
