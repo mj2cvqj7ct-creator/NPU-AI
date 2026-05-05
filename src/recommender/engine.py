@@ -546,10 +546,14 @@ class RecommendationEngine:
             return
         existing = self._track_db.get(features.track_id)
         if existing is None:
-            if count_play:
-                features.play_count = max(1, features.play_count)
-            else:
-                features.play_count = 0
+            if not count_play:
+                # Don't insert a new entry during a neutral (paused) update:
+                # the captured audio is NOT the paused track (it's whatever
+                # else the user has audible — silence, another tab, …) so
+                # the acoustic features would be garbage. Wait for the next
+                # real "play" signal before learning this track.
+                return
+            features.play_count = max(1, features.play_count)
             self._track_db[features.track_id] = features
             return
         if not count_play:

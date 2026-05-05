@@ -186,6 +186,38 @@ class TestRecommenderStreaming(unittest.TestCase):
 
         self.assertEqual(track.play_count, play_before)
 
+    def test_neutral_update_does_not_register_new_track(self) -> None:
+        """A neutral update on a yet-unseen track must NOT insert it.
+
+        The audio captured during a paused stream is not actually the
+        paused track, so storing it would seed the DB with corrupt
+        acoustic features.
+        """
+        self.assertEqual(self.engine.track_count, 0)
+        paused = NowPlaying(
+            source=SOURCE_SPOTIFY, title="Stranger", artist="Cold",
+            is_playing=False,
+        )
+        feats = self.engine.analyze_audio(_make_audio(70), now_playing=paused)
+        # Track has never been played; this is a neutral (pause) signal.
+        self.engine.update_preferences(feats, liked=None)
+        self.assertEqual(self.engine.track_count, 0)
+        self.assertNotIn(feats.track_id, self.engine._track_db)
+
+        # A subsequent real "play" on the SAME track should now register it
+        # with non-zero play_count and the correct acoustic features.
+        playing = NowPlaying(
+            source=SOURCE_SPOTIFY, title="Stranger", artist="Cold",
+            is_playing=True,
+        )
+        play_feats = self.engine.analyze_audio(
+            _make_audio(71), now_playing=playing,
+        )
+        self.engine.update_preferences(play_feats, liked=True)
+        self.assertEqual(self.engine.track_count, 1)
+        track = self.engine._track_db[play_feats.track_id]
+        self.assertGreaterEqual(track.play_count, 1)
+
     def test_neutral_update_does_not_apply_gradient(self) -> None:
         """liked=None must not push the preference vector either way."""
         # First, build up a non-zero preference profile via a positive signal.
@@ -200,13 +232,11 @@ class TestRecommenderStreaming(unittest.TestCase):
         service_before = self.engine.service_profile(SOURCE_SPOTIFY).copy()
         play_count_before = self.engine.service_play_counts[SOURCE_SPOTIFY]
 
-        # Apply a *neutral* update (e.g. user paused the streaming track).
-        # The preference and service vectors must NOT change, but the track
-        # database and history should still grow so the model has memory of
-        # the song.
-        track_count_before = self.engine.track_count
+        # Apply a *neutral* update on the SAME track that was just played.
+        # Preference vector, per-service vector, and per-service play count
+        # must all stay frozen.
         paused_now = NowPlaying(
-            source=SOURCE_SPOTIFY, title="C", artist="D",
+            source=SOURCE_SPOTIFY, title="A", artist="B",
             is_playing=False,
         )
         paused_feats = self.engine.analyze_audio(
@@ -224,7 +254,6 @@ class TestRecommenderStreaming(unittest.TestCase):
             self.engine.service_play_counts[SOURCE_SPOTIFY],
             play_count_before,
         )
-        self.assertGreater(self.engine.track_count, track_count_before)
 
     def test_get_recommendations_thread_safe(self) -> None:
         """get_recommendations must not raise while another thread updates."""
