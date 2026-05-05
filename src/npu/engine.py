@@ -130,7 +130,13 @@ class NPUEngine:
 
     @property
     def is_npu_active(self) -> bool:
-        return self._active_provider == ExecutionProvider.NPU_DIRECTML
+        # Both QNN (Snapdragon Hexagon NPU) and DirectML (which can dispatch
+        # to the NPU on Snapdragon X via Windows ML) qualify as "NPU active"
+        # for the purposes of UI status indicators.
+        return self._active_provider in (
+            ExecutionProvider.NPU_QNN,
+            ExecutionProvider.NPU_DIRECTML,
+        )
 
     def is_model_loaded(self, name: str) -> bool:
         return name in self._sessions
