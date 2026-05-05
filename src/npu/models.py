@@ -52,6 +52,14 @@ MODEL_REGISTRY: dict[str, _ModelRegistryEntry] = {
         "input_shape": [1, 128],
         "output_shape": [1, 64],
     },
+    "rec_scorer": {
+        "description": (
+            "Deep MLP scoring acoustic embeddings against per-service "
+            "preference profiles for cross-platform recommendations"
+        ),
+        "input_shape": [1, 64],
+        "output_shape": [1, 16],
+    },
 }
 
 

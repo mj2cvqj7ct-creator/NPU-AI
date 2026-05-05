@@ -1,0 +1,92 @@
+name: Windows ARM64 EXE (Snapdragon X)
+
+# Native ARM64 PyInstaller bundle targeted at Windows on Snapdragon X NPUs.
+# The runner image (`windows-11-arm`) is itself ARM64, so the resulting EXE
+# loads ARM64 ONNX Runtime and DirectML wheels and can dispatch to the NPU
+# without going through x64 emulation.
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly refresh so Releases stay downloadable even without recent pushes.
+    - cron: "37 6 * * 1"
+  push:
+    branches: ["main", "cursor/**", "devin/**"]
+    paths:
+      - "src/**"
+      - "build.spec"
+      - "requirements-windows-build.txt"
+      - ".github/workflows/windows_arm64_exe.yml"
+
+jobs:
+  pyinstaller_arm64:
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          architecture: "arm64"
+
+      - name: Install build dependencies (ARM64)
+        run: |
+          python -m pip install --upgrade pip
+          # Install ARM64-native ONNX Runtime + DirectML so the NPU provider
+          # can be loaded without x64 emulation.
+          pip install -r requirements-windows-build.txt
+
+      - name: Ensure models directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Path models -Force | Out-Null
+
+      - name: Build with PyInstaller (ARM64 target)
+        env:
+          PYINSTALLER_TARGET_ARCH: arm64
+        run: pyinstaller build.spec --noconfirm
+
+      - name: Zip ARM64 bundle
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/NPU_Audio_Enhancer" -DestinationPath "NPU_Audio_Enhancer_windows_arm64.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: NPU_Audio_Enhancer_windows_arm64
+          path: NPU_Audio_Enhancer_windows_arm64.zip
+          retention-days: 30
+
+  publish_release_arm64:
+    needs: pyinstaller_arm64
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows ARM64 zip
+        uses: actions/download-artifact@v6
+        with:
+          name: NPU_Audio_Enhancer_windows_arm64
+          path: release-asset
+
+      - name: Publish to GitHub Releases
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          artifacts: release-asset/NPU_Audio_Enhancer_windows_arm64.zip
+          name: Windows ARM64 EXE (Snapdragon X, rolling)
+          tag: windows-arm64-exe
+          allowUpdates: true
+          replacesArtifacts: true
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
+          body: |
+            **NPU オーディオエンハンサー — Windows ARM64（Snapdragon X / NPU 対応）**
+
+            - ダウンロード: `NPU_Audio_Enhancer_windows_arm64.zip` を展開し、`NPU_Audio_Enhancer.exe` を実行してください。
+            - 対象ハードウェア: Snapdragon X Elite/Plus (Windows 11 on ARM)。NPU は ONNX Runtime + DirectML 経由で利用されます。
+            - このリリースは `main` への push または「Actions → Windows ARM64 EXE → Run workflow」で更新されます。
+            - Windows Defender が警告する場合は「詳細情報」から実行を許可するか、ZIP を右クリック → プロパティでブロック解除してください。

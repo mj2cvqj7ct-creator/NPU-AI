@@ -22,7 +22,13 @@ class TestModelRegistry(unittest.TestCase):
         names = set(self.npu_models.MODEL_REGISTRY.keys())
         self.assertEqual(
             names,
-            {"source_separation", "audio_enhance", "noise_reduction", "recommender"},
+            {
+                "source_separation",
+                "audio_enhance",
+                "noise_reduction",
+                "recommender",
+                "rec_scorer",
+            },
         )
 
     def test_ensure_models_exist_writes_files(self) -> None:

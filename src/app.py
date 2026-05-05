@@ -29,6 +29,7 @@ from src.audio.processor import AudioProcessor
 from src.dac.xmos_controller import XMOSController
 from src.npu.engine import NPUConfig, NPUEngine
 from src.recommender.engine import RecommendationEngine
+from src.recommender.streaming_detector import NowPlaying, StreamingDetector
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +58,13 @@ class AudioEnhancerApp:
 
         self._output = AudioOutput(self._build_output_config())
         self._recommender = RecommendationEngine()
+        self._streaming_detector = StreamingDetector()
 
         self._processing_thread: threading.Thread | None = None
         self._is_running = False
         self._latest_audio: np.ndarray | None = None
         self._latest_viz_data: dict[str, Any] | None = None
+        self._latest_now_playing: NowPlaying = self._streaming_detector.current_track()
         self._lock = threading.Lock()
         self._last_output_underrun_count = 0
         self._render_signature: str | None = None
@@ -266,6 +269,14 @@ class AudioEnhancerApp:
         return self._recommender
 
     @property
+    def streaming_detector(self) -> StreamingDetector:
+        return self._streaming_detector
+
+    def get_now_playing(self) -> NowPlaying:
+        with self._lock:
+            return self._latest_now_playing
+
+    @property
     def output_stats(self) -> dict[str, int | bool]:
         return self._output.stats
 
@@ -294,6 +305,7 @@ class AudioEnhancerApp:
         self._sync_render_signature()
         self._capture.start()
         self._output.start()
+        self._streaming_detector.start()
 
         self._processing_thread = threading.Thread(
             target=self._processing_loop,
@@ -314,6 +326,7 @@ class AudioEnhancerApp:
 
         self._capture.stop()
         self._output.stop()
+        self._streaming_detector.stop()
         self._last_output_underrun_count = 0
         invalidate_default_render_endpoint_cache()
 
@@ -387,10 +400,18 @@ class AudioEnhancerApp:
     ) -> None:
         """Update recommendation engine with current audio features."""
         try:
+            now = self._streaming_detector.current_track()
+            with self._lock:
+                self._latest_now_playing = now
             features = self._recommender.analyze_audio(
-                audio, sample_rate=sample_rate,
+                audio, sample_rate=sample_rate, now_playing=now,
             )
-            self._recommender.update_preferences(features, liked=True)
+            # Skip the implicit "liked" gradient if the user paused playback —
+            # we still want acoustic features cached, but not as a positive
+            # preference signal.
+            self._recommender.update_preferences(
+                features, liked=now.is_playing or not now.has_metadata,
+            )
         except Exception as e:
             logger.debug("Recommendation update error: %s", e)
 
@@ -403,20 +424,26 @@ class AudioEnhancerApp:
         """Handle user liking the current track."""
         with self._lock:
             audio = self._latest_audio
+            now = self._latest_now_playing
 
         if audio is not None:
             sr = self._dac_controller.config.sample_rate.value
-            features = self._recommender.analyze_audio(audio, sample_rate=sr)
+            features = self._recommender.analyze_audio(
+                audio, sample_rate=sr, now_playing=now,
+            )
             self._recommender.update_preferences(features, liked=True)
 
     def on_track_skipped(self) -> None:
         """Handle user skipping/disliking the current track."""
         with self._lock:
             audio = self._latest_audio
+            now = self._latest_now_playing
 
         if audio is not None:
             sr = self._dac_controller.config.sample_rate.value
-            features = self._recommender.analyze_audio(audio, sample_rate=sr)
+            features = self._recommender.analyze_audio(
+                audio, sample_rate=sr, now_playing=now,
+            )
             self._recommender.update_preferences(features, liked=False)
 
     def shutdown(self) -> None:

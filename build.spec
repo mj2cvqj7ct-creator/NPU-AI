@@ -62,6 +62,10 @@ a = Analysis(
         'pycaw.pycaw',
         'yaml',
         'onnx',
+        # Streaming detector dependencies — winsdk preferred, winrt fallback.
+        'winsdk',
+        'winsdk.windows.media.control',
+        'winsdk.windows.foundation',
     ],
     hookspath=[],
     hooksconfig={},
