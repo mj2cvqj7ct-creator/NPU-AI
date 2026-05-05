@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
 import unittest
 
 import numpy as np
@@ -119,6 +120,98 @@ class TestRecommenderStreaming(unittest.TestCase):
         self.engine.update_preferences(feats, liked=True)
         path = os.path.join(self._tmp.name, "state.json")
         self.assertTrue(os.path.exists(path))
+
+    def test_neutral_update_does_not_apply_gradient(self) -> None:
+        """liked=None must not push the preference vector either way."""
+        # First, build up a non-zero preference profile via a positive signal.
+        now_playing = NowPlaying(
+            source=SOURCE_SPOTIFY, title="A", artist="B", is_playing=True,
+        )
+        seeded = self.engine.analyze_audio(
+            _make_audio(20), now_playing=now_playing,
+        )
+        self.engine.update_preferences(seeded, liked=True)
+        prefs_before = self.engine.preference_profile.copy()
+        service_before = self.engine.service_profile(SOURCE_SPOTIFY).copy()
+        play_count_before = self.engine.service_play_counts[SOURCE_SPOTIFY]
+
+        # Apply a *neutral* update (e.g. user paused the streaming track).
+        # The preference and service vectors must NOT change, but the track
+        # database and history should still grow so the model has memory of
+        # the song.
+        track_count_before = self.engine.track_count
+        paused_now = NowPlaying(
+            source=SOURCE_SPOTIFY, title="C", artist="D",
+            is_playing=False,
+        )
+        paused_feats = self.engine.analyze_audio(
+            _make_audio(21), now_playing=paused_now,
+        )
+        self.engine.update_preferences(paused_feats, liked=None)
+
+        prefs_after = self.engine.preference_profile
+        service_after = self.engine.service_profile(SOURCE_SPOTIFY)
+        for k, v in prefs_before.items():
+            self.assertAlmostEqual(prefs_after[k], v, places=6)
+        for k, v in service_before.items():
+            self.assertAlmostEqual(service_after[k], v, places=6)
+        self.assertEqual(
+            self.engine.service_play_counts[SOURCE_SPOTIFY],
+            play_count_before,
+        )
+        self.assertGreater(self.engine.track_count, track_count_before)
+
+    def test_get_recommendations_thread_safe(self) -> None:
+        """get_recommendations must not raise while another thread updates."""
+        # Seed the database with one entry so the snapshot path runs.
+        seed_now = NowPlaying(
+            source=SOURCE_SPOTIFY, title="Seed", artist="X", is_playing=True,
+        )
+        feats = self.engine.analyze_audio(_make_audio(31), now_playing=seed_now)
+        self.engine.update_preferences(feats, liked=True)
+
+        stop = threading.Event()
+        errors: list[BaseException] = []
+
+        def writer() -> None:
+            for i in range(40):
+                if stop.is_set():
+                    return
+                np_now = NowPlaying(
+                    source=SOURCE_YOUTUBE_MUSIC,
+                    title=f"writer-{i}",
+                    artist=f"author-{i}",
+                    is_playing=True,
+                )
+                f = self.engine.analyze_audio(
+                    _make_audio(40 + i), now_playing=np_now,
+                )
+                try:
+                    self.engine.update_preferences(f, liked=True)
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(exc)
+                    return
+
+        def reader() -> None:
+            for _ in range(80):
+                if stop.is_set():
+                    return
+                try:
+                    self.engine.get_recommendations(
+                        n=4, target_source=SOURCE_SPOTIFY,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(exc)
+                    return
+
+        threads = [threading.Thread(target=writer) for _ in range(2)]
+        threads += [threading.Thread(target=reader) for _ in range(3)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+        stop.set()
+        self.assertFalse(errors, f"Concurrency errors: {errors}")
 
 
 if __name__ == "__main__":

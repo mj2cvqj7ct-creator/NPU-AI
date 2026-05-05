@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 class ExecutionProvider(Enum):
+    # QNN — Qualcomm Hexagon NPU on Snapdragon X (preferred on win_arm64).
+    NPU_QNN = "QNNExecutionProvider"
+    # DirectML — NPU/GPU on Windows x64 (no native win_arm64 wheel on PyPI).
     NPU_DIRECTML = "DmlExecutionProvider"
     CPU = "CPUExecutionProvider"
     CUDA = "CUDAExecutionProvider"
@@ -29,7 +32,7 @@ class ExecutionProvider(Enum):
 
 @dataclass
 class NPUConfig:
-    preferred_provider: ExecutionProvider = ExecutionProvider.NPU_DIRECTML
+    preferred_provider: ExecutionProvider = ExecutionProvider.NPU_QNN
     model_dir: str = "models"
     device_id: int = 0
     num_threads: int = 4
@@ -86,7 +89,11 @@ class NPUEngine:
             available = ort.get_available_providers()
             logger.info("Available ONNX Runtime providers: %s", available)
 
+            # Try QNN (Snapdragon Hexagon NPU) first, then DirectML (x64),
+            # then CUDA, then CPU. Both NPU paths give access to the
+            # NeuralProcessingUnit on Snapdragon X.
             provider_priority = [
+                ExecutionProvider.NPU_QNN,
                 ExecutionProvider.NPU_DIRECTML,
                 ExecutionProvider.CUDA,
                 ExecutionProvider.CPU,
@@ -162,6 +169,11 @@ class NPUEngine:
             provider_options: list[dict[str, Any]] = []
             if active == ExecutionProvider.NPU_DIRECTML:
                 provider_options.append({"device_id": self.config.device_id})
+                if ExecutionProvider.CPU.value in providers:
+                    provider_options.append({})
+            elif active == ExecutionProvider.NPU_QNN:
+                # QNN HTP backend = Hexagon NPU on Snapdragon X.
+                provider_options.append({"backend_path": "QnnHtp.dll"})
                 if ExecutionProvider.CPU.value in providers:
                     provider_options.append({})
 

@@ -406,12 +406,21 @@ class AudioEnhancerApp:
             features = self._recommender.analyze_audio(
                 audio, sample_rate=sample_rate, now_playing=now,
             )
-            # Skip the implicit "liked" gradient if the user paused playback —
-            # we still want acoustic features cached, but not as a positive
-            # preference signal.
-            self._recommender.update_preferences(
-                features, liked=now.is_playing or not now.has_metadata,
-            )
+            # Determine the implicit signal:
+            #  * Audio is flowing without identifiable streaming metadata
+            #    (e.g. a local file or game audio) → treat as a positive
+            #    listening signal so the model still learns the user's taste.
+            #  * A streaming track is reported and currently playing → also a
+            #    positive signal.
+            #  * A streaming track is detected but paused → *neutral* update:
+            #    keep normalization stats fresh and persist the track in the
+            #    DB, but do NOT apply a negative gradient (the user merely
+            #    paused — they didn't dislike the track).
+            if not now.has_metadata or now.is_playing:
+                liked: bool | None = True
+            else:
+                liked = None
+            self._recommender.update_preferences(features, liked=liked)
         except Exception as e:
             logger.debug("Recommendation update error: %s", e)
 

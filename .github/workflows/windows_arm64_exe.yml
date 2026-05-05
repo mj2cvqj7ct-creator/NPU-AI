@@ -18,6 +18,7 @@ on:
       - "src/**"
       - "build.spec"
       - "requirements-windows-build.txt"
+      - "requirements-windows-build-arm64.txt"
       - ".github/workflows/windows_arm64_exe.yml"
 
 jobs:
@@ -34,9 +35,10 @@ jobs:
       - name: Install build dependencies (ARM64)
         run: |
           python -m pip install --upgrade pip
-          # Install ARM64-native ONNX Runtime + DirectML so the NPU provider
-          # can be loaded without x64 emulation.
-          pip install -r requirements-windows-build.txt
+          # Use the ARM64-specific requirements file: onnxruntime-qnn (QNN EP)
+          # talks directly to the Snapdragon Hexagon NPU; the DirectML wheel
+          # has no native win_arm64 build on PyPI.
+          pip install -r requirements-windows-build-arm64.txt
 
       - name: Ensure models directory
         shell: pwsh

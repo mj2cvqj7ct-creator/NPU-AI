@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -132,6 +133,12 @@ class RecommendationEngine:
     def __init__(self, data_dir: str = "data/recommender"):
         self.data_dir = data_dir
         self._npu_engine: Any = None
+        # Re-entrant lock guards mutations to the track DB, preference state,
+        # and history buffers. Lets the audio processing thread call
+        # update_preferences() concurrently with the UI thread polling
+        # get_recommendations() without races on dict iteration or numpy
+        # writes.
+        self._lock = threading.RLock()
         self._history: deque[TrackFeatures] = deque(maxlen=5000)
         self._preferences = np.zeros(FEATURE_DIM, dtype=np.float32)
         self._preference_momentum = np.zeros(FEATURE_DIM, dtype=np.float32)
@@ -430,83 +437,96 @@ class RecommendationEngine:
         return np.array(frames, dtype=np.float32)
 
     def update_preferences(
-        self, features: TrackFeatures, liked: bool = True,
+        self,
+        features: TrackFeatures,
+        liked: bool | None = True,
     ) -> None:
         """Update preferences using Adam-like optimizer.
 
-        Both the global preference vector and the per-service vector for
-        ``features.source`` are updated. The squared L2 distance between
-        the normalized track vector and the global preferences is recorded
-        as the live training "loss" for UI display.
+        ``liked`` semantics:
+          * ``True``  — positive gradient (the user wants more of this).
+          * ``False`` — negative gradient (the user actively disliked it).
+          * ``None``  — *neutral*: refresh normalization stats, register the
+            track in the database, append to history, but apply **no**
+            preference gradient. Used when the stream is merely paused.
+
+        The squared L2 distance between the normalized track vector and the
+        global preferences is always recorded as the live training "loss"
+        for UI display.
         """
-        vector = features.to_vector()
-        if len(vector) != len(self._preferences):
-            vector = np.resize(vector, len(self._preferences))
+        with self._lock:
+            vector = features.to_vector()
+            if len(vector) != len(self._preferences):
+                vector = np.resize(vector, len(self._preferences))
 
-        # Update running normalization stats
-        self._norm_count += 1
-        delta = vector - self._feature_mean
-        self._feature_mean += delta / self._norm_count
-        delta2 = vector - self._feature_mean
-        self._feature_var += (
-            (delta * delta2 - self._feature_var) / self._norm_count
-        )
+            # Update running normalization stats unconditionally — keeping
+            # them current even on neutral updates avoids cold-start drift
+            # the next time a real "liked" signal arrives.
+            self._norm_count += 1
+            delta = vector - self._feature_mean
+            self._feature_mean += delta / self._norm_count
+            delta2 = vector - self._feature_mean
+            self._feature_var += (
+                (delta * delta2 - self._feature_var) / self._norm_count
+            )
 
-        # Normalize input
-        std = np.sqrt(self._feature_var + 1e-8)
-        normalized = (vector - self._feature_mean) / std
+            # Normalize input
+            std = np.sqrt(self._feature_var + 1e-8)
+            normalized = (vector - self._feature_mean) / std
 
-        # Adam-style update
-        direction = 1.0 if liked else -0.5
-        gradient = (normalized - self._preferences) * direction
+            if liked is not None:
+                # Adam-style update only when there is a real signal.
+                direction = 1.0 if liked else -0.5
+                gradient = (normalized - self._preferences) * direction
 
-        self._update_step += 1
+                self._update_step += 1
 
-        # Momentum (first moment)
-        self._preference_momentum = (
-            self._beta1 * self._preference_momentum
-            + (1 - self._beta1) * gradient
-        )
-        # Velocity (second moment)
-        self._preference_velocity = (
-            self._beta2 * self._preference_velocity
-            + (1 - self._beta2) * gradient ** 2
-        )
+                # Momentum (first moment)
+                self._preference_momentum = (
+                    self._beta1 * self._preference_momentum
+                    + (1 - self._beta1) * gradient
+                )
+                # Velocity (second moment)
+                self._preference_velocity = (
+                    self._beta2 * self._preference_velocity
+                    + (1 - self._beta2) * gradient ** 2
+                )
 
-        # Bias correction
-        m_hat = self._preference_momentum / (
-            1 - self._beta1 ** self._update_step
-        )
-        v_hat = self._preference_velocity / (
-            1 - self._beta2 ** self._update_step
-        )
+                # Bias correction
+                m_hat = self._preference_momentum / (
+                    1 - self._beta1 ** self._update_step
+                )
+                v_hat = self._preference_velocity / (
+                    1 - self._beta2 ** self._update_step
+                )
 
-        # Update
-        self._preferences += (
-            self._learning_rate * m_hat / (np.sqrt(v_hat) + self._epsilon)
-        )
-        self._preferences = np.clip(self._preferences, -1.0, 1.0)
+                # Update
+                self._preferences += (
+                    self._learning_rate * m_hat
+                    / (np.sqrt(v_hat) + self._epsilon)
+                )
+                self._preferences = np.clip(self._preferences, -1.0, 1.0)
 
-        # Per-service profile: simple online EMA, biased by the same direction.
-        if features.source in self._service_preferences:
-            ema = 0.05 if liked else 0.02
-            current = self._service_preferences[features.source]
-            target = normalized * direction
-            self._service_preferences[features.source] = np.clip(
-                current * (1 - ema) + target * ema,
-                -1.0, 1.0,
-            ).astype(np.float32)
-            self._service_play_counts[features.source] += 1
+                # Per-service profile: simple online EMA, biased by direction.
+                if features.source in self._service_preferences:
+                    ema = 0.05 if liked else 0.02
+                    current = self._service_preferences[features.source]
+                    target = normalized * direction
+                    self._service_preferences[features.source] = np.clip(
+                        current * (1 - ema) + target * ema,
+                        -1.0, 1.0,
+                    ).astype(np.float32)
+                    self._service_play_counts[features.source] += 1
 
-        # Track loss = current distance between the normalized track and
-        # the learned profile. Drops as the model adapts to the listener.
-        diff = normalized - self._preferences
-        loss = float(np.mean(diff * diff))
-        self._loss_history.append(loss)
+            # Track loss = current distance between the normalized track and
+            # the learned profile. Drops as the model adapts to the listener.
+            diff = normalized - self._preferences
+            loss = float(np.mean(diff * diff))
+            self._loss_history.append(loss)
 
-        self._register_track(features)
-        self._history.append(features)
-        self._save_state()
+            self._register_track(features)
+            self._history.append(features)
+            self._save_state()
 
     def _register_track(self, features: TrackFeatures) -> None:
         """Persist or merge a track entry into the in-memory database.
@@ -558,26 +578,40 @@ class RecommendationEngine:
         Spotify, the cross-platform "same vibe" score uses Spotify's
         per-service preference vector even when scoring YouTube Music tracks.
         """
-        if not self._track_db:
-            return self._get_preference_summary(n)
+        # Snapshot the track DB and recent history under the lock so the
+        # background processing thread can keep registering new tracks
+        # without raising "dictionary changed size during iteration" here.
+        with self._lock:
+            if not self._track_db:
+                return self._get_preference_summary(n)
+            track_items = list(self._track_db.items())
+            history_snapshot = list(self._history)
+            preferences_snapshot = self._preferences.copy()
+            service_profile = (
+                self._service_preferences[target_source].copy()
+                if target_source and target_source in self._service_preferences
+                else None
+            )
+            update_step = self._update_step
 
         # Choose the profile vector to score against.
-        if target_source and target_source in self._service_preferences:
-            target_profile = self._service_preferences[target_source]
+        if service_profile is not None:
+            target_profile = service_profile
             mix = 0.6
         else:
-            target_profile = self._preferences
+            target_profile = preferences_snapshot
             mix = 1.0
         if mix < 1.0:
             target_profile = (
-                self._preferences * (1 - mix) + target_profile * mix
+                preferences_snapshot * (1 - mix) + target_profile * mix
             ).astype(np.float32)
 
         scored: list[tuple[float, TrackFeatures, dict[str, float]]] = []
-        for _track_id, features in self._track_db.items():
+        recent_sources = [h.source for h in history_snapshot[-10:]]
+        for _track_id, features in track_items:
             vector = features.to_vector()
-            if len(vector) != len(self._preferences):
-                vector = np.resize(vector, len(self._preferences))
+            if len(vector) != len(preferences_snapshot):
+                vector = np.resize(vector, len(preferences_snapshot))
 
             # Cosine similarity (primary scorer). ``scipy`` returns NaN when
             # either side is the zero vector (cold-start), so coerce to 0.
@@ -596,7 +630,7 @@ class RecommendationEngine:
 
             # Recency bonus (favour artists you just heard)
             recency_bonus = 0.0
-            for hist in reversed(list(self._history)[-30:]):
+            for hist in reversed(history_snapshot[-30:]):
                 if hist.artist and hist.artist == features.artist:
                     recency_bonus += 0.03
                     break
@@ -604,14 +638,11 @@ class RecommendationEngine:
             # Exploration bonus (UCB-style)
             play_count = max(1, features.play_count)
             exploration = self._exploration_rate * np.sqrt(
-                np.log(self._update_step + 1) / play_count,
+                np.log(update_step + 1) / play_count,
             )
 
             # Source diversity bonus
             source_bonus = 0.0
-            recent_sources = [
-                h.source for h in list(self._history)[-10:]
-            ]
             if features.source and features.source not in recent_sources:
                 source_bonus = 0.02
             if target_source and features.source == target_source:
