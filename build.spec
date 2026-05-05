@@ -48,10 +48,16 @@ a = Analysis(
         'PyQt6.QtGui',
         'PyQt6.QtWidgets',
         'numpy',
+        # numpy.testing is imported transitively by scipy._lib._array_api at
+        # module load time. PyInstaller does not always pick this up via the
+        # static graph, so list it explicitly.
+        'numpy.testing',
         'scipy',
         'scipy.signal',
         'scipy.fft',
         'scipy.spatial',
+        'scipy.sparse',
+        'scipy._lib._array_api',
         'sounddevice',
         'onnxruntime',
         'librosa',
@@ -73,8 +79,12 @@ a = Analysis(
     excludes=[
         'matplotlib',
         'tkinter',
+        # NOTE: do NOT exclude 'unittest' — scipy>=1.12 loads numpy.testing
+        # transitively at import time (scipy.spatial → scipy.sparse →
+        # scipy._lib._array_api → numpy.testing), and numpy.testing requires
+        # unittest. Excluding it makes the frozen EXE crash on launch with
+        # "ModuleNotFoundError: No module named 'unittest'".
         'test',
-        'unittest',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
