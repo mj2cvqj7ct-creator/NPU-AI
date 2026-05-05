@@ -130,7 +130,12 @@ class _SMTCBackend:
         try:
             self._mc_module, self._asyncio = self._import_smtc()
         except Exception as exc:  # pragma: no cover - depends on host
-            logger.debug("SMTC backend unavailable: %s", exc)
+            # Log at WARNING — when the bridge fails, the UI silently falls
+            # back to "待機中" and we want this visible in the log file.
+            logger.warning(
+                "SMTC backend unavailable (winsdk/winrt import failed): %s",
+                exc,
+            )
             return
         try:
             self._manager = self._asyncio.run(
@@ -138,8 +143,9 @@ class _SMTCBackend:
                 .request_async(),
             )
             self._available = True
+            logger.info("SMTC backend initialised — Now Playing detection active")
         except Exception as exc:  # pragma: no cover - depends on host
-            logger.debug("SMTC manager init failed: %s", exc)
+            logger.warning("SMTC manager init failed: %s", exc)
 
     @staticmethod
     def _import_smtc() -> tuple[Any, Any]:
@@ -333,6 +339,12 @@ class StreamingDetector:
         self.poll_interval = max(0.25, float(poll_interval))
         self._smtc = _SMTCBackend()
         self._fallback = _WindowFallback()
+        if sys.platform == "win32" and not self._smtc.available:
+            logger.warning(
+                "StreamingDetector: SMTC unavailable — falling back to "
+                "process/window enumeration only. Title/artist will be "
+                "limited unless winsdk is bundled correctly.",
+            )
         self._lock = threading.RLock()
         self._current = NowPlaying()
         self._last_track_id = ""

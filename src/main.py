@@ -9,27 +9,53 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import sys
+from pathlib import Path
 
 
-def setup_logging() -> None:
-    """Configure application logging."""
+def _log_dir() -> Path:
+    """Return a writable directory for the application log file.
+
+    When running as a PyInstaller-frozen EXE, ``os.getcwd()`` may be
+    ``C:\\Windows\\System32`` (if the user launched via a Start Menu
+    shortcut), which is not writable. Prefer ``%LOCALAPPDATA%`` on
+    Windows so the log is reliably created and easy for the user to
+    locate.
+    """
+    if sys.platform == "win32":
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        if local_appdata:
+            target = Path(local_appdata) / "NPU-Audio-Enhancer"
+            try:
+                target.mkdir(parents=True, exist_ok=True)
+                return target
+            except OSError:
+                pass
+    return Path(os.getcwd())
+
+
+def setup_logging() -> Path:
+    """Configure application logging and return the log file path."""
+    log_path = _log_dir() / "npu_audio_enhancer.log"
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler("npu_audio_enhancer.log", encoding="utf-8"),
+            logging.FileHandler(str(log_path), encoding="utf-8"),
         ],
     )
+    return log_path
 
 
 def main() -> int:
     """Application entry point."""
-    setup_logging()
+    log_path = setup_logging()
     logger = logging.getLogger(__name__)
     logger.info("Starting NPU Audio Enhancer v1.0")
+    logger.info("Log file: %s", log_path)
 
     try:
         from PyQt6.QtCore import Qt
