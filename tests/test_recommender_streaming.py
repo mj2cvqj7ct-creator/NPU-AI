@@ -121,6 +121,33 @@ class TestRecommenderStreaming(unittest.TestCase):
         path = os.path.join(self._tmp.name, "state.json")
         self.assertTrue(os.path.exists(path))
 
+    def test_neutral_update_does_not_inflate_play_count(self) -> None:
+        """liked=None must NOT increment play_count on the cached track."""
+        now = NowPlaying(
+            source=SOURCE_SPOTIFY, title="Hold", artist="Player",
+            is_playing=True,
+        )
+        feats = self.engine.analyze_audio(_make_audio(50), now_playing=now)
+        # First, a real "play" — track gets play_count >= 1.
+        self.engine.update_preferences(feats, liked=True)
+        track = self.engine._track_db[feats.track_id]
+        play_before = track.play_count
+        self.assertGreaterEqual(play_before, 1)
+
+        # Now simulate the user pausing the song while the audio thread
+        # keeps polling: many neutral updates against the same track id.
+        for i in range(5):
+            paused = self.engine.analyze_audio(
+                _make_audio(50 + i),
+                now_playing=NowPlaying(
+                    source=SOURCE_SPOTIFY, title="Hold", artist="Player",
+                    is_playing=False,
+                ),
+            )
+            self.engine.update_preferences(paused, liked=None)
+
+        self.assertEqual(track.play_count, play_before)
+
     def test_neutral_update_does_not_apply_gradient(self) -> None:
         """liked=None must not push the preference vector either way."""
         # First, build up a non-zero preference profile via a positive signal.

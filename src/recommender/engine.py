@@ -524,25 +524,36 @@ class RecommendationEngine:
             loss = float(np.mean(diff * diff))
             self._loss_history.append(loss)
 
-            self._register_track(features)
+            self._register_track(features, count_play=liked is not None)
             self._history.append(features)
             self._save_state()
 
-    def _register_track(self, features: TrackFeatures) -> None:
+    def _register_track(
+        self, features: TrackFeatures, *, count_play: bool = True,
+    ) -> None:
         """Persist or merge a track entry into the in-memory database.
 
         The database is keyed on the streaming track id so the same song from
         Spotify and YouTube Music ends up as separate entries — letting us
         suggest the cross-platform "same vibe, different service" picks.
+
+        ``count_play=False`` lets neutral (paused) updates refresh the cached
+        acoustic signature without inflating ``play_count``. Inflated play
+        counts would otherwise depress the UCB exploration bonus and display
+        a misleading "played N times" tooltip in the UI.
         """
         if not features.track_id:
             return
         existing = self._track_db.get(features.track_id)
         if existing is None:
-            features.play_count = max(1, features.play_count)
+            if count_play:
+                features.play_count = max(1, features.play_count)
+            else:
+                features.play_count = 0
             self._track_db[features.track_id] = features
             return
-        existing.play_count += 1
+        if count_play:
+            existing.play_count += 1
         existing.timestamp = features.timestamp
         # Acoustic features drift over the course of a song; keep an EMA so
         # the stored signature reflects the whole listen rather than the last
