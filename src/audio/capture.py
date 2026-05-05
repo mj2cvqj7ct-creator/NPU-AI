@@ -293,6 +293,10 @@ class WASAPICapture:
         """Main WASAPI capture loop using COM audio capture client."""
         import comtypes
 
+        orig_sample_rate = self.config.format.sample_rate
+        orig_channels = self.config.format.channels
+        orig_bit_depth = self.config.format.bit_depth
+
         try:
             import ctypes
             import time
@@ -315,12 +319,6 @@ class WASAPICapture:
             if block_align <= 0:
                 block_align = max(1, mix_ch * (bits // 8))
             bytes_per_frame = block_align
-            with self._lock:
-                self._actual_sample_rate = mix_rate
-            self.config.format.sample_rate = mix_rate
-            self.config.format.channels = mix_ch
-            self.config.format.bit_depth = bits
-            logger.info("WASAPI mix format: %d Hz, %d ch, %d-bit", mix_rate, mix_ch, bits)
             buffer_duration_hns = int(
                 REFTIMES_PER_SEC * self.config.buffer_size_ms / 1000
             )
@@ -338,9 +336,16 @@ class WASAPICapture:
             capture_client = client.GetService(IID_IAudioCaptureClient)
 
             client.Start()
+
+            with self._lock:
+                self._actual_sample_rate = mix_rate
+            self.config.format.sample_rate = mix_rate
+            self.config.format.channels = mix_ch
+            self.config.format.bit_depth = bits
+            logger.info("WASAPI mix format: %d Hz, %d ch, %d-bit", mix_rate, mix_ch, bits)
             logger.info("WASAPI loopback capture started via COM")
 
-            channels = int(mix_format.contents.nChannels)
+            channels = mix_ch
 
             while self._is_capturing:
                 try:
@@ -381,6 +386,11 @@ class WASAPICapture:
 
         except Exception as e:
             logger.warning("WASAPI COM capture failed, falling back to sounddevice: %s", e)
+            self.config.format.sample_rate = orig_sample_rate
+            self.config.format.channels = orig_channels
+            self.config.format.bit_depth = orig_bit_depth
+            with self._lock:
+                self._actual_sample_rate = None
             self._capture_loop_sounddevice()
         finally:
             self._wasapi_client = None
