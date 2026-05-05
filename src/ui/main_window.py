@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 
 from src.audio.capture import invalidate_default_render_endpoint_cache
 from src.audio.device_notify import NotificationHandle, start_render_endpoint_notifier
+from src.recommender.streaming_detector import SOURCE_UNKNOWN
 from src.ui.styles import DARK_THEME
 from src.ui.widgets.controls import (
     DepthControlPanel,
@@ -719,7 +720,7 @@ class MainWindow(QMainWindow):
                 recommender.update_step,
                 recommender.track_count,
             )
-            target = now.source if now.source != "unknown" else None
+            target = now.source if now.source != SOURCE_UNKNOWN else None
             recs = recommender.get_recommendations(
                 n=8, target_source=target,
             )

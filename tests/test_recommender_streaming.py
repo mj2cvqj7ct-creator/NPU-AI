@@ -121,6 +121,44 @@ class TestRecommenderStreaming(unittest.TestCase):
         path = os.path.join(self._tmp.name, "state.json")
         self.assertTrue(os.path.exists(path))
 
+    def test_neutral_update_preserves_track_acoustic_signature(self) -> None:
+        """liked=None must NOT EMA-blend new audio into the cached track."""
+        now = NowPlaying(
+            source=SOURCE_SPOTIFY, title="Pure", artist="Signal",
+            is_playing=True,
+        )
+        feats = self.engine.analyze_audio(_make_audio(60), now_playing=now)
+        self.engine.update_preferences(feats, liked=True)
+        track = self.engine._track_db[feats.track_id]
+        # Snapshot the acoustic features after the real "play" learn.
+        snapshot = {
+            attr: float(getattr(track, attr))
+            for attr in (
+                "energy", "valence", "tempo",
+                "danceability", "spectral_centroid",
+                "spectral_rolloff", "harmonic_ratio",
+            )
+        }
+
+        # Now pump in totally different audio with the same paused metadata
+        # — i.e. the user paused Spotify and started a YouTube video.
+        for i in range(4):
+            other_audio = _make_audio(200 + i) * 5.0  # different distribution
+            paused_feats = self.engine.analyze_audio(
+                other_audio,
+                now_playing=NowPlaying(
+                    source=SOURCE_SPOTIFY, title="Pure", artist="Signal",
+                    is_playing=False,
+                ),
+            )
+            self.engine.update_preferences(paused_feats, liked=None)
+
+        for attr, val in snapshot.items():
+            self.assertAlmostEqual(
+                float(getattr(track, attr)), val, places=6,
+                msg=f"Paused poll corrupted {attr}",
+            )
+
     def test_neutral_update_does_not_inflate_play_count(self) -> None:
         """liked=None must NOT increment play_count on the cached track."""
         now = NowPlaying(

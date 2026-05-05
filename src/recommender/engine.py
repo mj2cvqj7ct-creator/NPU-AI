@@ -552,8 +552,16 @@ class RecommendationEngine:
                 features.play_count = 0
             self._track_db[features.track_id] = features
             return
-        if count_play:
-            existing.play_count += 1
+        if not count_play:
+            # Neutral (paused) update: the captured audio is NOT the paused
+            # track — it is whatever else is currently audible (silence, a
+            # video preview, another tab, …). Do NOT EMA-blend it into the
+            # stored acoustic signature, otherwise repeated polls would
+            # gradually corrupt the entry. We also leave the timestamp
+            # alone so recency-based scoring still reflects the last real
+            # listen.
+            return
+        existing.play_count += 1
         existing.timestamp = features.timestamp
         # Acoustic features drift over the course of a song; keep an EMA so
         # the stored signature reflects the whole listen rather than the last
