@@ -746,20 +746,28 @@ class RecommendationEngine:
         return " · ".join(bits)
 
     # ----- UI accessors -----------------------------------------------------
+    #
+    # All accessors below copy the underlying mutable state under ``self._lock``
+    # so the UI thread (which polls them every 500 ms) cannot trip over
+    # concurrent mutations from the audio processing thread (deque/dict/array
+    # iteration would otherwise raise RuntimeError).
 
     @property
     def loss_history(self) -> list[float]:
-        return list(self._loss_history)
+        with self._lock:
+            return list(self._loss_history)
 
     @property
     def service_play_counts(self) -> dict[str, int]:
-        return dict(self._service_play_counts)
+        with self._lock:
+            return dict(self._service_play_counts)
 
     def service_profile(self, source: str) -> dict[str, float]:
         """Return one service's preference vector restricted to FEATURE_NAMES."""
-        if source not in self._service_preferences:
-            return {}
-        vec = self._service_preferences[source]
+        with self._lock:
+            if source not in self._service_preferences:
+                return {}
+            vec = self._service_preferences[source].copy()
         return {
             name: float(vec[i])
             for i, name in enumerate(FEATURE_NAMES)
@@ -768,11 +776,13 @@ class RecommendationEngine:
 
     @property
     def track_count(self) -> int:
-        return len(self._track_db)
+        with self._lock:
+            return len(self._track_db)
 
     @property
     def update_step(self) -> int:
-        return self._update_step
+        with self._lock:
+            return self._update_step
 
     def _get_preference_summary(self, n: int) -> list[dict[str, Any]]:
         summary: dict[str, float] = {}
@@ -856,8 +866,10 @@ class RecommendationEngine:
 
     @property
     def preference_profile(self) -> dict[str, float]:
+        with self._lock:
+            prefs = self._preferences.copy()
         return {
-            name: float(self._preferences[i])
+            name: float(prefs[i])
             for i, name in enumerate(FEATURE_NAMES)
-            if i < len(self._preferences)
+            if i < len(prefs)
         }

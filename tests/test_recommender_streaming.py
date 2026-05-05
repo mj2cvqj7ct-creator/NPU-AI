@@ -224,9 +224,17 @@ class TestRecommenderStreaming(unittest.TestCase):
                 if stop.is_set():
                     return
                 try:
+                    # Exercise every UI accessor that the QTimer polls so
+                    # we cover deque, dict, and ndarray snapshots.
                     self.engine.get_recommendations(
                         n=4, target_source=SOURCE_SPOTIFY,
                     )
+                    _ = self.engine.preference_profile
+                    _ = self.engine.loss_history
+                    _ = self.engine.service_play_counts
+                    _ = self.engine.service_profile(SOURCE_SPOTIFY)
+                    _ = self.engine.track_count
+                    _ = self.engine.update_step
                 except Exception as exc:  # noqa: BLE001
                     errors.append(exc)
                     return
