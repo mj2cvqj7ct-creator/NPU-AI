@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 
 from src.audio.capture import invalidate_default_render_endpoint_cache
 from src.audio.device_notify import NotificationHandle, start_render_endpoint_notifier
+from src.recommender.streaming_detector import SOURCE_UNKNOWN
 from src.ui.styles import DARK_THEME
 from src.ui.widgets.controls import (
     DepthControlPanel,
@@ -699,8 +700,31 @@ class MainWindow(QMainWindow):
                 self._dac_badge.setText("出力: 未検出")
                 self._dac_badge.setStyleSheet("color: #8B949E;")
 
-            profile = self._app.recommender.preference_profile
+            recommender = self._app.recommender
+            profile = recommender.preference_profile
             self._recommender_panel.update_preferences(profile)
+
+            now = self._app.get_now_playing()
+            self._recommender_panel.update_now_playing(now)
+
+            service_profiles = {
+                source: recommender.service_profile(source)
+                for source in recommender.service_play_counts
+            }
+            self._recommender_panel.update_service_profiles(
+                service_profiles,
+                recommender.service_play_counts,
+            )
+            self._recommender_panel.update_learning_curve(
+                recommender.loss_history,
+                recommender.update_step,
+                recommender.track_count,
+            )
+            target = now.source if now.source != SOURCE_UNKNOWN else None
+            recs = recommender.get_recommendations(
+                n=8, target_source=target,
+            )
+            self._recommender_panel.update_recommendations(recs)
         except Exception:
             logger.exception("Stats UI update failed; partial refresh next tick")
             self._npu_status_label.setText("NPU: 表示エラー（ログ参照）")
